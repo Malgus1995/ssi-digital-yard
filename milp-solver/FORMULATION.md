@@ -34,19 +34,19 @@ $\mathrm{CSV}_B$, $\mathrm{CSV}_Y$, $\mathrm{CSV}_D$는 각각 블록 스케줄,
 
 | 기호 | 단위 | 정의 | 계산 방법 |
 | --- | ---: | --- | --- |
-| $f_b^{\mathrm{in}},f_b^{\mathrm{out}}$ | code | 선행·다음 공장 | $f_b^{\mathrm{in}}:=\mathrm{CSV}_B[b,\texttt{inbound\_factory}],\quad f_b^{\mathrm{out}}:=\mathrm{CSV}_B[b,\texttt{outbound\_factory}]$ |
-| $d_b^{\mathrm{in}},d_b^{\mathrm{out}}$ | date | 대기 시작일·다음 공장 수용일 | $d_b^{\mathrm{in}}:=\mathrm{CSV}_B[b,\texttt{inbound\_date}],\quad d_b^{\mathrm{out}}:=\mathrm{CSV}_B[b,\texttt{outbound\_date}]$ |
-| $l_b,w_b,z_b$ | m | 블록 가로·세로·높이 | $(l_b,w_b,z_b):=\mathrm{CSV}_B[b,(\texttt{length\_m},\texttt{width\_m},\texttt{height\_m})]$ |
+| $f_b^{\mathrm{in}},f_b^{\mathrm{out}}$ | code | 선행·다음 공장 | $f_b^{\mathrm{in}}:=\mathrm{CSV}_B[b,\operatorname{inboundFactory}]$, $f_b^{\mathrm{out}}:=\mathrm{CSV}_B[b,\operatorname{outboundFactory}]$<br>CSV: `inbound_factory`, `outbound_factory` |
+| $d_b^{\mathrm{in}},d_b^{\mathrm{out}}$ | date | 대기 시작일·다음 공장 수용일 | $d_b^{\mathrm{in}}:=\mathrm{CSV}_B[b,\operatorname{inboundDate}]$, $d_b^{\mathrm{out}}:=\mathrm{CSV}_B[b,\operatorname{outboundDate}]$<br>CSV: `inbound_date`, `outbound_date` |
+| $l_b,w_b,z_b$ | m | 블록 가로·세로·높이 | $(l_b,w_b,z_b):=\mathrm{CSV}_B[b,(\operatorname{length},\operatorname{width},\operatorname{height})]$<br>CSV: `length_m`, `width_m`, `height_m` |
 | $v_b$ | m³ | 블록 체적 | $v_b:=l_bw_bz_b$ |
 | $h_b$ | day | 적치장 대기일 수 | $h_b:=\max(0,d_b^{\mathrm{out}}-d_b^{\mathrm{in}})$ |
-| $\alpha$ | - | 작업 여유 면적 계수 | $\alpha:=\texttt{spacing\_factor}=1.15$ |
+| $\alpha$ | - | 작업 여유 면적 계수 | $\alpha:=1.15$<br>설정: `spacing_factor` |
 | $a_b$ | m² | 블록 유효 점유 면적 | $a_b:=\alpha l_bw_b$ |
-| $A_y$ | m² | 적치장 총면적 | $A_y:=\mathrm{CSV}_Y[y,\texttt{area(m^2)}]$ |
-| $s_y$ | lane | 적치장 구획 수 | $s_y:=\max(1,\mathrm{CSV}_Y[y,\texttt{number}])$ |
-| $\rho_y$ | - | 사용 가능 면적 비율 | $\rho_y:=\texttt{usable\_area\_ratio}=0.75$ |
+| $A_y$ | m² | 적치장 총면적 | $A_y:=\mathrm{CSV}_Y[y,\operatorname{area}]$<br>CSV: `area(m^2)` |
+| $s_y$ | lane | 적치장 구획 수 | $s_y:=\max(1,\mathrm{CSV}_Y[y,\operatorname{number}])$<br>CSV: `number` |
+| $\rho_y$ | - | 사용 가능 면적 비율 | $\rho_y:=0.75$<br>설정: `usable_area_ratio` |
 | $C_y$ | m² | 적치장 사용 가능 면적 | $C_y:=\rho_yA_y$ |
-| $\bar{u}$ | - | 허용 최대 이용률 | $\bar{u}:=\texttt{max\_utilization}=0.95$ |
-| $d_{yf}$ | m | 적치장 $y$와 공장 $f$의 L2 거리 | $d_{yf}:=\mathrm{CSV}_D[(y,f),\texttt{l2\_distance\_m}]$ |
+| $\bar{u}$ | - | 허용 최대 이용률 | $\bar{u}:=0.95$<br>설정: `max_utilization` |
+| $d_{yf}$ | m | 적치장 $y$와 공장 $f$의 L2 거리 | $d_{yf}:=\mathrm{CSV}_D[(y,f),\operatorname{distance}]$<br>CSV: `l2_distance_m` |
 | $D_{by}$ | m | 블록의 적치장 경유 총거리 | $D_{by}:=d_{y f_b^{\mathrm{in}}}+d_{y f_b^{\mathrm{out}}}$ |
 | $q_b$ | - | 면적 70%·체적 30% 크기 계수 | $q_b:=0.70\dfrac{l_bw_b}{\operatorname{median}_{i\in\mathcal B^W}(l_iw_i)}+0.30\dfrac{v_b}{\operatorname{median}_{i\in\mathcal B^W}(v_i)}$ |
 | $T_{by}$ | score | 운송 비용 점수 | $T_{by}:=\dfrac{D_{by}}{1000}(0.75+0.25q_b)$ |
