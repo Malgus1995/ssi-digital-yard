@@ -28,8 +28,8 @@ from constraints import (
     CostWeights,
     ModelArtifacts,
     ModelConfig,
+    StockyardModelBuilder,
     Yard,
-    build_stockyard_model,
     occupied_dates,
 )
 from ortools.linear_solver import pywraplp
@@ -142,14 +142,25 @@ def build_assignment_options(
     candidate_yard_count: int,
     overflow_yard_count: int,
 ) -> Dict[str, List[AssignmentOption]]:
-    """Create a small distance-ordered candidate list for every block.
+    """Create distance-ordered yard candidates for waiting blocks.
 
     The nearest candidates implement the first-fit order.  A few largest yards
     are always retained as overflow choices so the MIP can avoid concentrating
-    every block in the nearest yard.
+    every block in the nearest yard.  Same-day blocks transfer directly to the
+    next factory and receive an empty candidate list.
     """
 
-    median_footprint = statistics.median(block.footprint_m2 for block in blocks)
+    waiting_blocks = [block for block in blocks if block.requires_yard]
+    median_footprint = (
+        statistics.median(block.footprint_m2 for block in waiting_blocks)
+        if waiting_blocks
+        else 1.0
+    )
+    median_volume = (
+        statistics.median(block.volume_m3 for block in waiting_blocks)
+        if waiting_blocks
+        else 1.0
+    )
     overflow_codes = {
         yard.code
         for yard in sorted(yards, key=lambda item: item.usable_area_m2, reverse=True)[
@@ -159,6 +170,11 @@ def build_assignment_options(
     options_by_block: Dict[str, List[AssignmentOption]] = {}
 
     for block in blocks:
+        if not block.requires_yard:
+            # The next factory accepts this block on the release day, so it
+            # transfers directly without consuming stockyard capacity.
+            options_by_block[block.code] = []
+            continue
         occupied_area = block.footprint_m2 * config.spacing_factor
         feasible_routes: List[Tuple[Yard, float]] = []
         for yard in yards:
@@ -186,7 +202,12 @@ def build_assignment_options(
                 yard.code for yard, _distance in feasible_routes if yard.code in overflow_codes
             )
 
-        size_ratio = max(0.25, block.footprint_m2 / median_footprint)
+        footprint_ratio = block.footprint_m2 / median_footprint
+        volume_ratio = block.volume_m3 / median_volume
+        # Floor area drives most yard work, while volume makes height affect
+        # crane and transport difficulty as well.  Both terms are monotone:
+        # increasing any dimension increases the resulting size factor.
+        size_ratio = 0.70 * footprint_ratio + 0.30 * volume_ratio
         options: List[AssignmentOption] = []
         for rank, (yard, route_distance_m) in enumerate(feasible_routes):
             if yard.code not in selected_codes:
@@ -198,7 +219,7 @@ def build_assignment_options(
             )
             # Proxy for internal moves: long stays and large footprints are
             # riskier; more yard sections provide additional access choices.
-            occupied_day_count = block.dwell_days + 1
+            occupied_day_count = block.dwell_days
             handling_risk = (
                 occupied_day_count
                 * size_ratio
@@ -244,16 +265,20 @@ def apply_first_fit_hint(
 ) -> Tuple[int, int]:
     """Create a distance-ordered first-fit warm start.
 
-    For each block in arrival order, choose the first candidate yard whose
-    daily hard capacity remains feasible.  This is only a MIP hint: the solver
-    may move a block when total transport, handling, or congestion cost drops.
+    For each waiting block in arrival order, choose the first candidate yard
+    whose daily hard capacity remains feasible.  This is only a MIP hint: the
+    solver may move a block when total transport, handling, or congestion cost
+    drops.
     """
 
     yard_by_code = {yard.code: yard for yard in yards}
     loads: Dict[Tuple[str, date], float] = defaultdict(float)
     chosen_yard: Dict[str, str] = {}
 
+    waiting_block_count = sum(block.requires_yard for block in blocks)
     for block in sorted(blocks, key=lambda item: (item.inbound_date, item.code)):
+        if not block.requires_yard:
+            continue
         area = block.footprint_m2 * config.spacing_factor
         days = tuple(occupied_dates(block))
         ordered_options = sorted(
@@ -282,7 +307,7 @@ def apply_first_fit_hint(
 
     if hint_variables:
         solver.SetHint(hint_variables, hint_values)
-    return len(chosen_yard), len(blocks) - len(chosen_yard)
+    return len(chosen_yard), waiting_block_count - len(chosen_yard)
 
 
 def iter_dates(start: date, end: date) -> Iterable[date]:
@@ -295,7 +320,7 @@ def iter_dates(start: date, end: date) -> Iterable[date]:
 def extract_assignments(
     blocks: Sequence[Block], artifacts: ModelArtifacts, config: ModelConfig
 ) -> Tuple[List[Dict[str, object]], Dict[Tuple[str, date], Dict[str, float]]]:
-    """Read x[b,y] and aggregate daily utilization inputs."""
+    """Read yard choices and retain same-day direct transfers in the output."""
 
     daily: Dict[Tuple[str, date], Dict[str, float]] = defaultdict(
         lambda: {"used_area_m2": 0.0, "active_blocks": 0.0}
@@ -313,6 +338,32 @@ def extract_assignments(
             for key, variable in variables_by_block[block.code]
             if variable.solution_value() > 0.5
         ]
+        if not block.requires_yard:
+            if selected:
+                raise RuntimeError(
+                    f"{block.code}: direct-transfer block unexpectedly uses a yard"
+                )
+            rows.append(
+                {
+                    "block_code": block.code,
+                    "storage_mode": "DIRECT_TO_FACTORY",
+                    "assigned_yard": "",
+                    "inbound_factory": block.inbound_factory,
+                    "outbound_factory": block.outbound_factory,
+                    "inbound_date": block.inbound_date.isoformat(),
+                    "outbound_date": block.outbound_date.isoformat(),
+                    "waiting_days": 0,
+                    "length_m": block.length_m,
+                    "width_m": block.width_m,
+                    "height_m": block.height_m,
+                    "occupied_area_m2": 0.0,
+                    "route_distance_m": 0.0,
+                    "first_fit_rank": 0,
+                    "transport_score": 0.0,
+                    "handling_risk_score": 0.0,
+                }
+            )
+            continue
         if len(selected) != 1:
             raise RuntimeError(
                 f"{block.code}: expected one selected yard, found {len(selected)}"
@@ -328,19 +379,21 @@ def extract_assignments(
         rows.append(
             {
                 "block_code": block.code,
+                "storage_mode": "STOCKYARD",
                 "assigned_yard": option.yard_code,
                 "inbound_factory": block.inbound_factory,
                 "outbound_factory": block.outbound_factory,
                 "inbound_date": block.inbound_date.isoformat(),
                 "outbound_date": block.outbound_date.isoformat(),
+                "waiting_days": block.dwell_days,
                 "length_m": block.length_m,
                 "width_m": block.width_m,
                 "height_m": block.height_m,
-                "occupied_area_m2": round(occupied_area, 3),
+                "occupied_area_m2": round(occupied_area, 9),
                 "route_distance_m": round(option.route_distance_m, 1),
                 "first_fit_rank": option.first_fit_rank,
-                "transport_score": round(option.transport_score, 6),
-                "handling_risk_score": round(option.handling_risk_score, 6),
+                "transport_score": round(option.transport_score, 12),
+                "handling_risk_score": round(option.handling_risk_score, 12),
             }
         )
     return rows, daily
@@ -416,9 +469,9 @@ def write_solution(
                     "yard_code": yard.code,
                     "yard_zone": yard.zone,
                     "active_blocks": int(values["active_blocks"]),
-                    "used_area_m2": round(used_area, 3),
-                    "usable_area_m2": round(yard.usable_area_m2, 3),
-                    "utilization": round(used_area / yard.usable_area_m2, 6),
+                    "used_area_m2": round(used_area, 9),
+                    "usable_area_m2": round(yard.usable_area_m2, 9),
+                    "utilization": round(used_area / yard.usable_area_m2, 12),
                 }
             )
 
@@ -451,6 +504,12 @@ def write_solution(
         "status": status_name,
         "backend": backend,
         "block_count": len(blocks),
+        "direct_to_factory_block_count": sum(
+            not block.requires_yard for block in blocks
+        ),
+        "stockyard_waiting_block_count": sum(
+            block.requires_yard for block in blocks
+        ),
         "yard_count": len(yards),
         "binary_assignment_variable_count": len(artifacts.assignment_vars),
         "constraint_count": solver.NumConstraints(),
@@ -470,7 +529,7 @@ def write_solution(
         "peak_yard_utilization": peak_row,
         "first_fit_hint": {
             "assigned_blocks": hint_assigned,
-            "unassigned_blocks": hint_unassigned,
+            "unassigned_waiting_blocks": hint_unassigned,
         },
         "skipped_yards_without_numeric_capacity": list(skipped_yards),
         "model_config": asdict(config),
@@ -579,11 +638,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.verbose:
         solver.EnableOutput()
 
-    artifacts = build_stockyard_model(
-        solver, blocks, yards, options_by_block, config, weights
+    model_builder = StockyardModelBuilder(
+        solver=solver,
+        config=config,
+        weights=weights,
     )
+    artifacts = model_builder.build(blocks, yards, options_by_block)
     if args.no_first_fit_hint:
-        hint_assigned, hint_unassigned = 0, len(blocks)
+        hint_assigned = 0
+        hint_unassigned = sum(block.requires_yard for block in blocks)
     else:
         hint_assigned, hint_unassigned = apply_first_fit_hint(
             solver, blocks, yards, options_by_block, artifacts, config
@@ -594,6 +657,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             {
                 "backend": backend,
                 "blocks": len(blocks),
+                "direct_to_factory_blocks": sum(
+                    not block.requires_yard for block in blocks
+                ),
+                "stockyard_waiting_blocks": sum(
+                    block.requires_yard for block in blocks
+                ),
                 "yards": len(yards),
                 "assignment_variables": len(artifacts.assignment_vars),
                 "constraints": solver.NumConstraints(),

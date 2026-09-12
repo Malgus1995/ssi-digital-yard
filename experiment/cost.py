@@ -37,6 +37,7 @@ def calculate_standard_cost_from_rows(
 ) -> Dict[str, object]:
     """Recalculate comparable cost without trusting a solver's objective log."""
 
+    congestion_bands = tuple(congestion_bands)
     required_assignment_fields = {
         "transport_score",
         "handling_risk_score",

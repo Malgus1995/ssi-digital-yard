@@ -4,8 +4,8 @@ The source data has yard-level capacity, but it does not contain exact lane,
 stack, or entrance geometry.  Therefore this model does not pretend to count
 physical rehandles exactly.  It uses two transparent proxies instead:
 
-1. a per-assignment handling-risk score based on block size, dwell time, and
-   the number of sections in a yard; and
+1. a per-assignment handling-risk score based on block size, positive waiting
+   time, and the number of sections in a yard; and
 2. a steep, piecewise-linear daily congestion cost above 50%, 70%, and 85%
    utilization.
 
@@ -43,10 +43,20 @@ class Block:
         return self.length_m * self.width_m
 
     @property
+    def volume_m3(self) -> float:
+        return self.footprint_m2 * self.height_m
+
+    @property
     def dwell_days(self) -> int:
-        """Calendar difference; same-day arrival/departure returns zero."""
+        """Days spent waiting between release and factory acceptance."""
 
         return (self.outbound_date - self.inbound_date).days
+
+    @property
+    def requires_yard(self) -> bool:
+        """Whether the block needs a stockyard before the next factory."""
+
+        return self.dwell_days > 0
 
 
 @dataclass(frozen=True)
@@ -114,221 +124,216 @@ class ModelArtifacts:
 def occupied_dates(block: Block) -> Iterable[date]:
     """Yield dates on which a block consumes yard capacity.
 
-    The interval is inclusive of the outbound date.  That conservative choice
-    treats a block leaving during the day as occupying space for that day's
-    capacity plan.
+    The interval is half-open: the release day consumes capacity and the day
+    accepted by the next factory does not.  A same-day direct transfer
+    therefore consumes no stockyard capacity.
     """
 
     current = block.inbound_date
-    while current <= block.outbound_date:
+    while current < block.outbound_date:
         yield current
         current += timedelta(days=1)
 
 
-def create_assignment_variables(
-    solver: pywraplp.Solver,
-    blocks: Sequence[Block],
-    options_by_block: Mapping[str, Sequence[AssignmentOption]],
-) -> Tuple[
-    Dict[Tuple[str, str], pywraplp.Variable],
-    Dict[Tuple[str, str], AssignmentOption],
-]:
-    """Create x[b,y] = 1 when block b is assigned to yard y."""
+class StockyardModelBuilder:
+    """Own all variables, constraints, and the objective for one MIP model."""
 
-    assignment_vars: Dict[Tuple[str, str], pywraplp.Variable] = {}
-    option_by_key: Dict[Tuple[str, str], AssignmentOption] = {}
+    def __init__(
+        self,
+        solver: pywraplp.Solver,
+        config: ModelConfig,
+        weights: CostWeights,
+    ) -> None:
+        self.solver = solver
+        self.config = config
+        self.weights = weights
 
-    for block_index, block in enumerate(blocks):
-        options = options_by_block.get(block.code, ())
-        if not options:
-            raise ValueError(f"Block {block.code} has no feasible yard candidate")
-        for option_index, option in enumerate(options):
-            key = (block.code, option.yard_code)
-            assignment_vars[key] = solver.BoolVar(
-                f"x_b{block_index}_o{option_index}"
-            )
-            option_by_key[key] = option
+        self.assignment_vars = {}
+        self.option_by_key = {}
+        self.active_terms = {}
+        self.excess_area_vars = {}
+        self.peak_utilization_vars = {}
 
-    return assignment_vars, option_by_key
+        self._built = False
 
+    def create_assignment_variables(
+        self,
+        blocks: Sequence[Block],
+        options_by_block: Mapping[str, Sequence[AssignmentOption]],
+    ) -> None:
+        """Create x[b,y] = 1 when block b is assigned to yard y."""
 
-def add_exactly_one_yard_constraints(
-    solver: pywraplp.Solver,
-    blocks: Sequence[Block],
-    options_by_block: Mapping[str, Sequence[AssignmentOption]],
-    assignment_vars: Mapping[Tuple[str, str], pywraplp.Variable],
-) -> None:
-    """Every block must be placed in exactly one candidate yard."""
-
-    for block_index, block in enumerate(blocks):
-        constraint = solver.Constraint(1.0, 1.0, f"assign_once_{block_index}")
-        for option in options_by_block[block.code]:
-            constraint.SetCoefficient(
-                assignment_vars[(block.code, option.yard_code)], 1.0
-            )
-
-
-def build_daily_active_terms(
-    blocks: Sequence[Block],
-    options_by_block: Mapping[str, Sequence[AssignmentOption]],
-    assignment_vars: Mapping[Tuple[str, str], pywraplp.Variable],
-    config: ModelConfig,
-) -> Dict[Tuple[str, date], List[Tuple[pywraplp.Variable, float, str]]]:
-    """Index assignment variables by yard and occupied day."""
-
-    active_terms: Dict[
-        Tuple[str, date], List[Tuple[pywraplp.Variable, float, str]]
-    ] = {}
-    for block in blocks:
-        occupied_area = block.footprint_m2 * config.spacing_factor
-        for option in options_by_block[block.code]:
-            variable = assignment_vars[(block.code, option.yard_code)]
-            for day in occupied_dates(block):
-                active_terms.setdefault((option.yard_code, day), []).append(
-                    (variable, occupied_area, block.code)
+        for block_index, block in enumerate(blocks):
+            if not block.requires_yard:
+                continue
+            options = options_by_block.get(block.code, ())
+            if not options:
+                raise ValueError(f"Block {block.code} has no feasible yard candidate")
+            for option_index, option in enumerate(options):
+                key = (block.code, option.yard_code)
+                self.assignment_vars[key] = self.solver.BoolVar(
+                    f"x_b{block_index}_o{option_index}"
                 )
-    return active_terms
+                self.option_by_key[key] = option
 
+    def add_exactly_one_yard_constraints(
+        self,
+        blocks: Sequence[Block],
+        options_by_block: Mapping[str, Sequence[AssignmentOption]],
+    ) -> None:
+        """Every waiting block must be placed in one candidate yard."""
 
-def add_daily_capacity_and_congestion_constraints(
-    solver: pywraplp.Solver,
-    yards: Sequence[Yard],
-    active_terms: Mapping[
-        Tuple[str, date], Sequence[Tuple[pywraplp.Variable, float, str]]
-    ],
-    config: ModelConfig,
-) -> Tuple[
-    Dict[Tuple[str, date, float], Tuple[pywraplp.Variable, float]],
-    Dict[str, pywraplp.Variable],
-]:
-    """Add hard daily capacity and soft convex congestion constraints.
-
-    For a congestion threshold t, excess_area >= load - t * capacity.
-    Multiple cumulative excess variables create a convex piecewise-linear
-    penalty without a nonlinear utilization-squared term.
-    """
-
-    yard_by_code = {yard.code: yard for yard in yards}
-    infinity = solver.infinity()
-    excess_vars: Dict[
-        Tuple[str, date, float], Tuple[pywraplp.Variable, float]
-    ] = {}
-    peak_vars = {
-        yard.code: solver.NumVar(
-            0.0, config.max_utilization, f"peak_util_{yard_index}"
-        )
-        for yard_index, yard in enumerate(yards)
-    }
-
-    for day_index, ((yard_code, day), terms) in enumerate(
-        sorted(active_terms.items(), key=lambda item: (item[0][0], item[0][1]))
-    ):
-        yard = yard_by_code[yard_code]
-        capacity = yard.usable_area_m2
-
-        hard_capacity = solver.Constraint(
-            -infinity,
-            config.max_utilization * capacity,
-            f"capacity_{day_index}",
-        )
-        for variable, area, _block_code in terms:
-            hard_capacity.SetCoefficient(variable, area)
-
-        # peak >= daily_load / usable_capacity
-        peak_constraint = solver.Constraint(-infinity, 0.0, f"peak_{day_index}")
-        for variable, area, _block_code in terms:
-            peak_constraint.SetCoefficient(variable, area)
-        peak_constraint.SetCoefficient(peak_vars[yard_code], -capacity)
-
-        for band_index, (threshold, slope) in enumerate(config.congestion_bands):
-            max_excess = max(0.0, (config.max_utilization - threshold) * capacity)
-            excess = solver.NumVar(
-                0.0,
-                max_excess,
-                f"excess_{day_index}_{band_index}",
+        for block_index, block in enumerate(blocks):
+            if not block.requires_yard:
+                continue
+            constraint = self.solver.Constraint(
+                1.0, 1.0, f"assign_once_{block_index}"
             )
-            # load - excess <= threshold * capacity
-            band_constraint = solver.Constraint(
+            for option in options_by_block[block.code]:
+                constraint.SetCoefficient(
+                    self.assignment_vars[(block.code, option.yard_code)], 1.0
+                )
+
+    def build_daily_active_terms(
+        self,
+        blocks: Sequence[Block],
+        options_by_block: Mapping[str, Sequence[AssignmentOption]],
+    ) -> None:
+        """Index assignment variables by yard and occupied day."""
+
+        for block in blocks:
+            occupied_area = block.footprint_m2 * self.config.spacing_factor
+            for option in options_by_block[block.code]:
+                variable = self.assignment_vars[(block.code, option.yard_code)]
+                for day in occupied_dates(block):
+                    self.active_terms.setdefault(
+                        (option.yard_code, day), []
+                    ).append((variable, occupied_area, block.code))
+
+    def add_daily_capacity_and_congestion_constraints(
+        self,
+        yards: Sequence[Yard],
+    ) -> None:
+        """Add hard daily capacity and soft convex congestion constraints.
+
+        For a congestion threshold t, excess_area >= load - t * capacity.
+        Multiple cumulative excess variables create a convex piecewise-linear
+        penalty without a nonlinear utilization-squared term.
+        """
+
+        yard_by_code = {yard.code: yard for yard in yards}
+        infinity = self.solver.infinity()
+        self.peak_utilization_vars = {
+            yard.code: self.solver.NumVar(
+                0.0,
+                self.config.max_utilization,
+                f"peak_util_{yard_index}",
+            )
+            for yard_index, yard in enumerate(yards)
+        }
+
+        for day_index, ((yard_code, day), terms) in enumerate(
+            sorted(
+                self.active_terms.items(),
+                key=lambda item: (item[0][0], item[0][1]),
+            )
+        ):
+            yard = yard_by_code[yard_code]
+            capacity = yard.usable_area_m2
+
+            hard_capacity = self.solver.Constraint(
                 -infinity,
-                threshold * capacity,
-                f"band_{day_index}_{band_index}",
+                self.config.max_utilization * capacity,
+                f"capacity_{day_index}",
             )
             for variable, area, _block_code in terms:
-                band_constraint.SetCoefficient(variable, area)
-            band_constraint.SetCoefficient(excess, -1.0)
-            excess_vars[(yard_code, day, threshold)] = (excess, slope)
+                hard_capacity.SetCoefficient(variable, area)
 
-    return excess_vars, peak_vars
+            # peak >= daily_load / usable_capacity
+            peak_constraint = self.solver.Constraint(
+                -infinity, 0.0, f"peak_{day_index}"
+            )
+            for variable, area, _block_code in terms:
+                peak_constraint.SetCoefficient(variable, area)
+            peak_constraint.SetCoefficient(
+                self.peak_utilization_vars[yard_code], -capacity
+            )
 
+            for band_index, (threshold, slope) in enumerate(
+                self.config.congestion_bands
+            ):
+                max_excess = max(
+                    0.0,
+                    (self.config.max_utilization - threshold) * capacity,
+                )
+                excess = self.solver.NumVar(
+                    0.0,
+                    max_excess,
+                    f"excess_{day_index}_{band_index}",
+                )
+                # load - excess <= threshold * capacity
+                band_constraint = self.solver.Constraint(
+                    -infinity,
+                    threshold * capacity,
+                    f"band_{day_index}_{band_index}",
+                )
+                for variable, area, _block_code in terms:
+                    band_constraint.SetCoefficient(variable, area)
+                band_constraint.SetCoefficient(excess, -1.0)
+                self.excess_area_vars[(yard_code, day, threshold)] = (
+                    excess,
+                    slope,
+                )
 
-def set_minimum_operating_cost_objective(
-    solver: pywraplp.Solver,
-    assignment_vars: Mapping[Tuple[str, str], pywraplp.Variable],
-    option_by_key: Mapping[Tuple[str, str], AssignmentOption],
-    excess_area_vars: Mapping[
-        Tuple[str, date, float], Tuple[pywraplp.Variable, float]
-    ],
-    peak_utilization_vars: Mapping[str, pywraplp.Variable],
-    weights: CostWeights,
-) -> None:
-    """Minimize transport, handling, first-fit deviation, and congestion."""
+    def set_minimum_operating_cost_objective(self) -> None:
+        """Minimize transport, handling, first-fit deviation, and congestion."""
 
-    objective = solver.Objective()
-    for key, variable in assignment_vars.items():
-        option = option_by_key[key]
-        coefficient = (
-            weights.transport * option.transport_score
-            + weights.internal_handling * option.handling_risk_score
-            + weights.first_fit_rank * option.first_fit_rank
+        objective = self.solver.Objective()
+        for key, variable in self.assignment_vars.items():
+            option = self.option_by_key[key]
+            coefficient = (
+                self.weights.transport * option.transport_score
+                + self.weights.internal_handling * option.handling_risk_score
+                + self.weights.first_fit_rank * option.first_fit_rank
+            )
+            objective.SetCoefficient(variable, coefficient)
+
+        for excess, marginal_slope in self.excess_area_vars.values():
+            objective.SetCoefficient(
+                excess,
+                self.weights.utilization * marginal_slope / 1_000.0,
+            )
+
+        for peak_variable in self.peak_utilization_vars.values():
+            objective.SetCoefficient(
+                peak_variable, self.weights.peak_utilization
+            )
+
+        objective.SetMinimization()
+
+    def build(
+        self,
+        blocks: Sequence[Block],
+        yards: Sequence[Yard],
+        options_by_block: Mapping[str, Sequence[AssignmentOption]],
+    ) -> ModelArtifacts:
+        """Build the complete model in dependency order."""
+
+        if self._built:
+            raise RuntimeError(
+                "A StockyardModelBuilder instance can build only one model"
+            )
+        self.create_assignment_variables(blocks, options_by_block)
+        self.add_exactly_one_yard_constraints(blocks, options_by_block)
+        self.build_daily_active_terms(blocks, options_by_block)
+        self.add_daily_capacity_and_congestion_constraints(yards)
+        self.set_minimum_operating_cost_objective()
+        self._built = True
+
+        return ModelArtifacts(
+            assignment_vars=self.assignment_vars,
+            option_by_key=self.option_by_key,
+            excess_area_vars=self.excess_area_vars,
+            peak_utilization_vars=self.peak_utilization_vars,
+            active_terms=self.active_terms,
         )
-        objective.SetCoefficient(variable, coefficient)
-
-    for excess, marginal_slope in excess_area_vars.values():
-        objective.SetCoefficient(
-            excess,
-            weights.utilization * marginal_slope / 1_000.0,
-        )
-
-    for peak_variable in peak_utilization_vars.values():
-        objective.SetCoefficient(peak_variable, weights.peak_utilization)
-
-    objective.SetMinimization()
-
-
-def build_stockyard_model(
-    solver: pywraplp.Solver,
-    blocks: Sequence[Block],
-    yards: Sequence[Yard],
-    options_by_block: Mapping[str, Sequence[AssignmentOption]],
-    config: ModelConfig,
-    weights: CostWeights,
-) -> ModelArtifacts:
-    """Build the complete stockyard assignment MIP."""
-
-    assignment_vars, option_by_key = create_assignment_variables(
-        solver, blocks, options_by_block
-    )
-    add_exactly_one_yard_constraints(
-        solver, blocks, options_by_block, assignment_vars
-    )
-    active_terms = build_daily_active_terms(
-        blocks, options_by_block, assignment_vars, config
-    )
-    excess_vars, peak_vars = add_daily_capacity_and_congestion_constraints(
-        solver, yards, active_terms, config
-    )
-    set_minimum_operating_cost_objective(
-        solver,
-        assignment_vars,
-        option_by_key,
-        excess_vars,
-        peak_vars,
-        weights,
-    )
-    return ModelArtifacts(
-        assignment_vars=assignment_vars,
-        option_by_key=option_by_key,
-        excess_area_vars=excess_vars,
-        peak_utilization_vars=peak_vars,
-        active_terms=active_terms,
-    )

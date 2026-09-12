@@ -13,7 +13,7 @@ from .contracts import MethodRun, RunConfig
 
 SOLVER_SCRIPTS = {
     "or": Path("milp-solver") / "solver.py",
-    "sa": Path("sa-solver") / "solver.py",
+    "sa": Path("meta-heuristic-solver") / "solver.py",
     "rl": Path("rl-solver") / "solver.py",
 }
 

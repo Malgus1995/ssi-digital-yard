@@ -15,11 +15,15 @@
 `date`, `yard_code`, `active_blocks`, `used_area_m2`, `usable_area_m2`,
 `utilization`이 필요합니다.
 
+배정 CSV는 모든 블록을 유지합니다. `storage_mode`이
+`DIRECT_TO_FACTORY`이면 다음 공장이 당일 수용한 블록으로 적치장을 사용하지
+않으며, `STOCKYARD`이면 공장 수용일까지 적치장에서 대기한 블록입니다.
+
 현재 OR 어댑터는 `milp-solver/solver.py`에 연결되어 있습니다. 향후 아래
 경로에 같은 CLI 계약의 파일을 추가하면 `main.py --methods all`에 자동으로
 포함됩니다.
 
-- `sa-solver/solver.py`
+- `meta-heuristic-solver/solver.py`
 - `rl-solver/solver.py`
 
 GIF에는 Pillow, MP4에는 Pillow와 imageio-ffmpeg가 필요합니다.

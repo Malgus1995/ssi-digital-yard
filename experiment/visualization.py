@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import math
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
@@ -97,7 +98,8 @@ def build_frames(
 
     width = 960
     row_height = 125
-    height = 150 + row_height * len(successful)
+    # H.264 encoders commonly require dimensions divisible by 16.
+    height = math.ceil((150 + row_height * len(successful)) / 16) * 16
     font = ImageFont.load_default()
     frames = []
     for day in selected_days:
@@ -183,7 +185,8 @@ def write_mp4(frames, path: Path, fps: float) -> None:
         fps=fps,
         codec="libx264",
         pix_fmt_in="rgb24",
-        output_params=("-pix_fmt", "yuv420p", "-movflags", "+faststart"),
+        pix_fmt_out="yuv420p",
+        output_params=["-movflags", "+faststart"],
     )
     writer.send(None)
     try:

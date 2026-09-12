@@ -136,7 +136,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     runs: List[MethodRun] = []
     for method in methods:
-        print(f"\n[{method.upper()}] starting")
+        print(f"\n[{method.upper()}] starting", flush=True)
         run = run_method(method, config)
         if run.assignments_path.exists() and run.utilization_path.exists():
             run.standard_cost = calculate_standard_cost(
