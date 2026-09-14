@@ -10,14 +10,14 @@
 
 | 기호 | 정의 |
 | --- | --- |
-| $b \in \mathcal{B}$ | 블록 인덱스 |
-| $\mathcal{B}^{W}=\{b\in\mathcal{B}:h_b>0\}$ | 적치장 대기 블록 집합 |
-| $y \in \mathcal{Y}$ | 적치장 인덱스 |
-| $\mathcal{F}_b \subseteq \mathcal{Y}$ | 블록 $b$가 물리적으로 배정 가능한 적치장 집합 |
-| $\mathcal{Y}_b \subseteq \mathcal{F}_b$ | 계산량 축소 후 유지한 후보 적치장 집합 |
-| $d \in \mathcal{D}$ | 일(day) 인덱스 |
-| $\mathcal{B}^{W}_d$ | 날짜 $d$에 적치 중인 대기 블록 집합 |
-| $k \in \mathcal{K}$ | 혼잡도 구간 인덱스 |
+| `b in B` | 블록 인덱스 |
+| `B_wait := {b in B : wait[b] > 0}` | 적치장 대기 블록 집합 |
+| `y in Y` | 적치장 인덱스 |
+| `F[b] subset Y` | 블록 `b`가 물리적으로 배정 가능한 적치장 집합 |
+| `Y[b] subset F[b]` | 계산량 축소 후 유지한 후보 적치장 집합 |
+| `d in D` | 일(day) 인덱스 |
+| `B_wait[d]` | 날짜 `d`에 적치 중인 대기 블록 집합 |
+| `k in K` | 혼잡도 구간 인덱스 |
 
 블록의 적치 구간은 다음 공장이 수용하는 출고일을 제외한 반개구간이다.
 
@@ -57,9 +57,9 @@ d_b^{\mathrm{in}} \le d < d_b^{\mathrm{out}}
 
 | 구분 | 해당 파라미터 | 의미 |
 | --- | --- | --- |
-| 입력 데이터 | $f_b,d_b,l_b,w_b,z_b,A_y,s_y$ | CSV에서 읽는 관측·스케줄 값 |
-| 계산값 | $v_b,h_b,a_b,C_y,d_{yf},D_{by},q_b,T_{by},H_{by},R_{by}$ | 입력 데이터와 설정값으로 계산 |
-| 하이퍼파라미터 | $\alpha,\rho_y,\bar u,\theta_k,\gamma_k,w_T,w_H,w_R,w_U,w_P$ | 실험자가 정책에 맞게 조정 |
+| 입력 데이터 | `f_in, f_out, d_in, d_out, L, W, Z, raw_area, sections` | CSV에서 읽는 관측·스케줄 값 |
+| 계산값 | `V, wait, area, capacity, distance, route, size, transport, handling, rank` | 입력 데이터와 설정값으로 계산 |
+| 하이퍼파라미터 | `alpha, usable_ratio, max_util, threshold, slope, weights` | 실험자가 정책에 맞게 조정 |
 
 `l2_distance_m`은 가상 위·경도 좌표로부터 다음과 같이 생성했다. $R_E$는
 지구 반지름, $\phi$는 위도, $\lambda$는 경도이며 현장 규모에서는 평면 L2
@@ -100,13 +100,35 @@ q_b
 
 여기서 $s_y$는 적치장 $y$의 lane 수이다.
 
-## 2. Decision variables
+## 2. Variables
+
+### 2.1 Operational decision variable
 
 | 변수 | 정의 |
 | --- | --- |
-| $x_{by}\in\{0,1\}$ | 대기 블록 $b\in\mathcal{B}^{W}$를 적치장 $y$에 배정하면 1 |
-| $0\le e_{ydk}\le\max(0,(\bar u-\theta_k)C_y)$ | 날짜 $d$, 적치장 $y$에서 임계값 $\theta_k$를 초과한 면적 |
-| $0\le p_y\le\bar{u}$ | 계획기간 동안 적치장 $y$의 최대 이용률 |
+| `x[b,y] in {0,1}` | 블록 `b`가 적치장 `y`를 방문하여 적치되면 1 |
+
+현재 모델에서는 적치장을 방문하는 목적이 블록 적치뿐이므로 “방문”과 “적치”는
+같은 사건이다. 따라서 별도의 방문변수와 적치변수를 만들지 않고 `x[b,y]`
+하나로 표현한다. 대기일이 0이면 직행하고, 대기일이 양수이면 아래 C1에 따라
+정확히 하나의 `x[b,y]`가 1이 된다.
+
+### 2.2 Linearization auxiliary variables
+
+| 보조변수 | 정의 |
+| --- | --- |
+| `0 <= excess[y,d,k] <= max(0,(max_util-threshold[k])*capacity[y])` | 날짜 `d`, 적치장 `y`에서 임계값 `threshold[k]`를 초과한 면적 |
+| `0 <= peak[y] <= max_util` | 계획기간 동안 적치장 `y`의 최대 이용률 |
+
+`excess`와 `peak`는 현장의 선택사항이 아니라, `max()`가 포함된 혼잡 비용을
+선형 MIP로 표현하기 위한 계산용 보조변수이다. 목적함수가 두 값을 최소화하므로
+최적해에서는 `x[b,y]`가 정해진 뒤 다음 값으로 결정된다.
+
+```math
+e_{ydk}=\max\left(0,L_{yd}-\theta_kC_y\right),
+\qquad
+p_y=\max_{d\in\mathcal D}\frac{L_{yd}}{C_y}
+```
 
 날짜별 적치 부하는 다음과 같이 정의한다.
 
@@ -236,16 +258,16 @@ x_{by}\in\{0,1\}
 
 | 항목 | 기본값 |
 | --- | ---: |
-| $\alpha$ | 1.15 |
-| $\rho_y$ | 0.75 |
-| $\bar{u}$ | 0.95 |
-| $w_T$ | 1.00 |
-| $w_H$ | 0.35 |
-| $w_R$ | 0.20 |
-| $w_U$ | 1.00 |
-| $w_P$ | 6.00 |
+| `alpha` | 1.15 |
+| `usable_ratio` | 0.75 |
+| `max_util` | 0.95 |
+| `w_T` | 1.00 |
+| `w_H` | 0.35 |
+| `w_R` | 0.20 |
+| `w_U` | 1.00 |
+| `w_P` | 6.00 |
 
-| $k$ | $\theta_k$ | $\gamma_k$ |
+| `k` | `threshold[k]` | `slope[k]` |
 | ---: | ---: | ---: |
 | 1 | 0.50 | 2.0 |
 | 2 | 0.70 | 6.0 |
@@ -277,10 +299,10 @@ First-fit은 대기 블록에만 적용하며 하드 제약이 아니다.
 
 | 수식 | 구현 |
 | --- | --- |
-| 후보 집합 및 $T_{by},H_{by},R_{by}$ | [`build_assignment_options`](solver.py#L137) |
-| $x_{by}$ | [`create_assignment_variables`](constraints.py#L155) |
+| 후보 집합 및 `transport[b,y]`, `handling[b,y]`, `rank[b,y]` | [`build_assignment_options`](solver.py#L137) |
+| `x[b,y]` | [`create_assignment_variables`](constraints.py#L155) |
 | (C1) | [`add_exactly_one_yard_constraints`](constraints.py#L175) |
-| $L_{yd}$ | [`build_daily_active_terms`](constraints.py#L193) |
+| `load[y,d]` | [`build_daily_active_terms`](constraints.py#L193) |
 | (C2)–(C4), (C6)–(C7) | [`add_daily_capacity_and_congestion_constraints`](constraints.py#L209) |
 | (OBJ) | [`set_minimum_operating_cost_objective`](constraints.py#L284) |
 | first-fit 초기해 | [`apply_first_fit_hint`](solver.py#L248) |
