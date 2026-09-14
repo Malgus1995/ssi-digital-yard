@@ -29,31 +29,31 @@ d_b^{\mathrm{in}} \le d < d_b^{\mathrm{out}}
 
 ### 1.2 Parameters
 
-$\mathrm{CSV}_B$, $\mathrm{CSV}_Y$, $\mathrm{CSV}_D$는 각각 블록 스케줄,
+`CSV_B`, `CSV_Y`, `CSV_D`는 각각 블록 스케줄,
 적치장 노드, 적치장-공장 거리 CSV를 뜻한다.
 
 | 기호 | 단위 | 정의 | 계산 방법 |
 | --- | ---: | --- | --- |
-| $f_b^{\mathrm{in}},f_b^{\mathrm{out}}$ | code | 선행·다음 공장 | $f_b^{\mathrm{in}}:=\mathrm{CSV}_B[b,\operatorname{inboundFactory}]$, $f_b^{\mathrm{out}}:=\mathrm{CSV}_B[b,\operatorname{outboundFactory}]$<br>CSV: `inbound_factory`, `outbound_factory` |
-| $d_b^{\mathrm{in}},d_b^{\mathrm{out}}$ | date | 대기 시작일·다음 공장 수용일 | $d_b^{\mathrm{in}}:=\mathrm{CSV}_B[b,\operatorname{inboundDate}]$, $d_b^{\mathrm{out}}:=\mathrm{CSV}_B[b,\operatorname{outboundDate}]$<br>CSV: `inbound_date`, `outbound_date` |
-| $l_b,w_b,z_b$ | m | 블록 가로·세로·높이 | $(l_b,w_b,z_b):=\mathrm{CSV}_B[b,(\operatorname{length},\operatorname{width},\operatorname{height})]$<br>CSV: `length_m`, `width_m`, `height_m` |
-| $v_b$ | m³ | 블록 체적 | $v_b:=l_bw_bz_b$ |
-| $h_b$ | day | 적치장 대기일 수 | $h_b:=\max(0,d_b^{\mathrm{out}}-d_b^{\mathrm{in}})$ |
-| $\alpha$ | - | 작업 여유 면적 계수 | $\alpha:=1.15$<br>설정: `spacing_factor` |
-| $a_b$ | m² | 블록 유효 점유 면적 | $a_b:=\alpha l_bw_b$ |
-| $A_y$ | m² | 적치장 총면적 | $A_y:=\mathrm{CSV}_Y[y,\operatorname{area}]$<br>CSV: `area(m^2)` |
-| $s_y$ | lane | 적치장 구획 수 | $s_y:=\max(1,\mathrm{CSV}_Y[y,\operatorname{number}])$<br>CSV: `number` |
-| $\rho_y$ | - | 사용 가능 면적 비율 | $\rho_y:=0.75$<br>설정: `usable_area_ratio` |
-| $C_y$ | m² | 적치장 사용 가능 면적 | $C_y:=\rho_yA_y$ |
-| $\bar{u}$ | - | 허용 최대 이용률 | $\bar{u}:=0.95$<br>설정: `max_utilization` |
-| $d_{yf}$ | m | 적치장 $y$와 공장 $f$의 L2 거리 | $d_{yf}:=\mathrm{CSV}_D[(y,f),\operatorname{distance}]$<br>CSV: `l2_distance_m` |
-| $D_{by}$ | m | 블록의 적치장 경유 총거리 | $D_{by}:=d_{y f_b^{\mathrm{in}}}+d_{y f_b^{\mathrm{out}}}$ |
-| $q_b$ | - | 면적 70%·체적 30% 크기 계수 | $q_b:=0.70\dfrac{l_bw_b}{\operatorname{median}_{i\in\mathcal B^W}(l_iw_i)}+0.30\dfrac{v_b}{\operatorname{median}_{i\in\mathcal B^W}(v_i)}$ |
-| $T_{by}$ | score | 운송 비용 점수 | $T_{by}:=\dfrac{D_{by}}{1000}(0.75+0.25q_b)$ |
-| $H_{by}$ | score | 내부 취급 위험 점수 | $H_{by}:=h_bq_b\left(1+\dfrac{3}{\max(1,s_y)}\right)$ |
-| $R_{by}$ | rank | first-fit 후보 순위 | $R_{by}:=\operatorname{rank}_0\!\left(y;\operatorname{sort}_{j\in\mathcal F_b}(D_{bj},j)\right)$ |
-| $\theta_k,\gamma_k$ | - | 혼잡 임계값·기울기 | $(\theta_k,\gamma_k)\in\{(0.50,2),(0.70,6),(0.85,18)\}$ |
-| $w_T,w_H,w_R,w_U,w_P$ | - | 목적함수 가중치 | $(w_T,w_H,w_R,w_U,w_P):=(1.00,0.35,0.20,1.00,6.00)$ |
+| `f_in[b]`, `f_out[b]` | code | 선행·다음 공장 | `f_in[b] := CSV_B[b].inbound_factory`; `f_out[b] := CSV_B[b].outbound_factory` |
+| `d_in[b]`, `d_out[b]` | date | 대기 시작일·다음 공장 수용일 | `d_in[b] := CSV_B[b].inbound_date`; `d_out[b] := CSV_B[b].outbound_date` |
+| `L[b]`, `W[b]`, `Z[b]` | m | 블록 가로·세로·높이 | `L[b], W[b], Z[b] := CSV_B[b].length_m, width_m, height_m` |
+| `V[b]` | m³ | 블록 체적 | `V[b] := L[b] * W[b] * Z[b]` |
+| `wait[b]` | day | 적치장 대기일 수 | `wait[b] := max(0, d_out[b] - d_in[b])` |
+| `alpha` | - | 작업 여유 면적 계수 | `alpha := 1.15` (`spacing_factor`) |
+| `area[b]` | m² | 블록 유효 점유 면적 | `area[b] := alpha * L[b] * W[b]` |
+| `raw_area[y]` | m² | 적치장 총면적 | `raw_area[y] := CSV_Y[y].area_m2` |
+| `sections[y]` | lane | 적치장 구획 수 | `sections[y] := max(1, CSV_Y[y].number)` |
+| `usable_ratio` | - | 사용 가능 면적 비율 | `usable_ratio := 0.75` |
+| `capacity[y]` | m² | 적치장 사용 가능 면적 | `capacity[y] := usable_ratio * raw_area[y]` |
+| `max_util` | - | 허용 최대 이용률 | `max_util := 0.95` |
+| `distance[y,f]` | m | 적치장과 공장의 L2 거리 | `distance[y,f] := CSV_D[y,f].l2_distance_m` |
+| `route[b,y]` | m | 블록의 적치장 경유 총거리 | `route[b,y] := distance[y,f_in[b]] + distance[y,f_out[b]]` |
+| `size[b]` | - | 면적 70%·체적 30% 크기 계수 | `size[b] := 0.70*(L[b]*W[b])/median(L*W) + 0.30*V[b]/median(V)` |
+| `transport[b,y]` | score | 운송 비용 점수 | `transport[b,y] := route[b,y]/1000 * (0.75 + 0.25*size[b])` |
+| `handling[b,y]` | score | 내부 취급 위험 점수 | `handling[b,y] := wait[b] * size[b] * (1 + 3/max(1,sections[y]))` |
+| `rank[b,y]` | rank | first-fit 후보 순위 | `rank[b,y] := zero_based_rank(route[b,y], yard_code)` |
+| `threshold[k]`, `slope[k]` | - | 혼잡 임계값·기울기 | `(threshold, slope) := (0.50,2), (0.70,6), (0.85,18)` |
+| `w_T,w_H,w_R,w_U,w_P` | - | 목적함수 가중치 | `(w_T,w_H,w_R,w_U,w_P) := (1.00,0.35,0.20,1.00,6.00)` |
 
 | 구분 | 해당 파라미터 | 의미 |
 | --- | --- | --- |
@@ -79,8 +79,8 @@ d_{yf}={}&2R_E\arcsin\left(\sqrt{a_{yf}}\right)
 
 ```math
 q_b=
-0.70\frac{l_bw_b}{\operatorname{median}_{i\in\mathcal{B}^{W}}(l_iw_i)}
-+0.30\frac{v_b}{\operatorname{median}_{i\in\mathcal{B}^{W}}(v_i)}
+0.70\frac{l_bw_b}{\mathrm{median}_{i\in\mathcal{B}^{W}}(l_iw_i)}
++0.30\frac{v_b}{\mathrm{median}_{i\in\mathcal{B}^{W}}(v_i)}
 ```
 
 ```math
