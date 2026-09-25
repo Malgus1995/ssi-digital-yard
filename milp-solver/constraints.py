@@ -1,16 +1,7 @@
-"""OR-Tools MIP constraints for the stockyard scheduling example.
+"""OR-Tools MIP constraints for stockyard scheduling.
 
-The source data has yard-level capacity, but it does not contain exact lane,
-stack, or entrance geometry.  Therefore this model does not pretend to count
-physical rehandles exactly.  It uses two transparent proxies instead:
-
-1. a per-assignment handling-risk score based on block size, positive waiting
-   time, and the number of sections in a yard; and
-2. a steep, piecewise-linear daily congestion cost above 50%, 70%, and 85%
-   utilization.
-
-This keeps the formulation linear and easy to study.  Exact stack rehandling
-can be added later when slot coordinates and access order become available.
+Minimize transport, first-fit deviation, daily congestion, and peak utilization.
+Yard counts do not describe internal geometry, so no handling-risk proxy is used.
 """
 
 from __future__ import annotations
@@ -52,11 +43,6 @@ class Block:
 
         return (self.outbound_date - self.inbound_date).days
 
-    @property
-    def requires_yard(self) -> bool:
-        """Whether the block needs a stockyard before the next factory."""
-
-        return self.dwell_days > 0
 
 
 @dataclass(frozen=True)
@@ -64,7 +50,6 @@ class Yard:
     code: str
     zone: str
     raw_area_m2: float
-    sections: int
     usable_area_m2: float
 
 
@@ -77,7 +62,6 @@ class AssignmentOption:
     route_distance_m: float
     first_fit_rank: int
     transport_score: float
-    handling_risk_score: float
 
 
 @dataclass(frozen=True)
@@ -85,7 +69,6 @@ class CostWeights:
     """Relative operating-cost weights; these are scores, not currency."""
 
     transport: float = 1.0
-    internal_handling: float = 0.35
     first_fit_rank: float = 0.20
     utilization: float = 1.0
     peak_utilization: float = 6.0
@@ -124,7 +107,7 @@ def occupied_dates(block: Block) -> Iterable[date]:
     """Yield dates on which a block consumes yard capacity.
 
     The interval is half-open: the release day consumes capacity and the day
-    accepted by the next factory does not.  A same-day direct transfer
+    accepted by the next factory does not.  A same-day yard visit
     therefore consumes no stockyard capacity.
     """
 
@@ -163,8 +146,6 @@ class StockyardModelBuilder:
         """Create x[b,y] = 1 when block b is assigned to yard y."""
 
         for block_index, block in enumerate(blocks):
-            if not block.requires_yard:
-                continue
             options = options_by_block.get(block.code, ())
             if not options:
                 raise ValueError(f"Block {block.code} has no feasible yard candidate")
@@ -180,11 +161,9 @@ class StockyardModelBuilder:
         blocks: Sequence[Block],
         options_by_block: Mapping[str, Sequence[AssignmentOption]],
     ) -> None:
-        """Every waiting block must be placed in one candidate yard."""
+        """Every scheduled block must be placed in one candidate yard."""
 
         for block_index, block in enumerate(blocks):
-            if not block.requires_yard:
-                continue
             constraint = self.solver.Constraint(
                 1.0, 1.0, f"assign_once_{block_index}"
             )
@@ -285,14 +264,13 @@ class StockyardModelBuilder:
                 )
 
     def set_minimum_operating_cost_objective(self) -> None:
-        """Minimize transport, handling, first-fit deviation, and congestion."""
+        """Minimize transport, first-fit deviation, and congestion."""
 
         objective = self.solver.Objective()
         for key, variable in self.assignment_vars.items():
             option = self.option_by_key[key]
             coefficient = (
                 self.weights.transport * option.transport_score
-                + self.weights.internal_handling * option.handling_risk_score
                 + self.weights.first_fit_rank * option.first_fit_rank
             )
             objective.SetCoefficient(variable, coefficient)

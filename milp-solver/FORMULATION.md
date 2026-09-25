@@ -1,8 +1,8 @@
 # Stockyard Assignment MIP Formulation
 
 본 문서는 적치장 배정 OR-Tools MIP 모델의 **표기법, 목적함수, 제약조건**만 정리한다.
-다음 공장이 당일 수용하는 블록은 공장으로 직행하고, 수용일까지 대기해야 하는
-블록만 적치장을 사용한다. 목적함수 값은 화폐 단위가 아닌 가중 비용 점수이다.
+스케줄의 모든 블록을 하나의 적치장에 배정한다.
+당일 입출고 블록도 배정하되 일 단위 점유 면적에는 포함하지 않는다. 목적함수 값은 화폐 단위가 아닌 가중 비용 점수이다.
 
 ## 1. Notation
 
@@ -11,18 +11,17 @@
 | 기호 | 정의 |
 | --- | --- |
 | `b in B` | 블록 인덱스 |
-| `B_wait := {b in B : wait[b] > 0}` | 적치장 대기 블록 집합 |
 | `y in Y` | 적치장 인덱스 |
 | `F[b] subset Y` | 블록 `b`가 물리적으로 배정 가능한 적치장 집합 |
 | `Y[b] subset F[b]` | 계산량 축소 후 유지한 후보 적치장 집합 |
 | `d in D` | 일(day) 인덱스 |
-| `B_wait[d]` | 날짜 `d`에 적치 중인 대기 블록 집합 |
+| `B[d]` | 날짜 `d`에 적치 중인 블록 집합 |
 | `k in K` | 혼잡도 구간 인덱스 |
 
 블록의 적치 구간은 다음 공장이 수용하는 출고일을 제외한 반개구간이다.
 
 ```math
-b \in \mathcal{B}^{W}_d
+b \in \mathcal{B}_d
 \iff
 d_b^{\mathrm{in}} \le d < d_b^{\mathrm{out}}
 ```
@@ -42,22 +41,20 @@ d_b^{\mathrm{in}} \le d < d_b^{\mathrm{out}}
 | `alpha` | - | 작업 여유 면적 계수 | `alpha := 1.15` (`spacing_factor`) |
 | `area[b]` | m² | 블록 유효 점유 면적 | `area[b] := alpha * L[b] * W[b]` |
 | `raw_area[y]` | m² | 적치장 총면적 | `raw_area[y] := CSV_Y[y].area_m2` |
-| `sections[y]` | lane | 적치장 구획 수 | `sections[y] := max(1, CSV_Y[y].number)` |
 | `capacity[y]` | m² | 적치장 사용 가능 면적 | `capacity[y] := raw_area[y]` |
 | `max_util` | - | 허용 최대 이용률 | `max_util := 0.95` |
 | `distance[y,f]` | m | 적치장과 공장의 L2 거리 | `distance[y,f] := CSV_D[y,f].l2_distance_m` |
 | `route[b,y]` | m | 블록의 적치장 경유 총거리 | `route[b,y] := distance[y,f_in[b]] + distance[y,f_out[b]]` |
 | `size[b]` | - | 면적 70%·체적 30% 크기 계수 | `size[b] := 0.70*(L[b]*W[b])/median(L*W) + 0.30*V[b]/median(V)` |
 | `transport[b,y]` | score | 운송 비용 점수 | `transport[b,y] := route[b,y]/1000 * (0.75 + 0.25*size[b])` |
-| `handling[b,y]` | score | 내부 취급 위험 점수 | `handling[b,y] := wait[b] * size[b] * (1 + 3/max(1,sections[y]))` |
 | `rank[b,y]` | rank | first-fit 후보 순위 | `rank[b,y] := zero_based_rank(route[b,y], yard_code)` |
 | `threshold[k]`, `slope[k]` | - | 혼잡 임계값·기울기 | `(threshold, slope) := (0.50,2), (0.70,6), (0.85,18)` |
-| `w_T,w_H,w_R,w_U,w_P` | - | 목적함수 가중치 | `(w_T,w_H,w_R,w_U,w_P) := (1.00,0.35,0.20,1.00,6.00)` |
+| `w_T,w_R,w_U,w_P` | - | 목적함수 가중치 | `(w_T,w_R,w_U,w_P) := (1.00,0.20,1.00,6.00)` |
 
 | 구분 | 해당 파라미터 | 의미 |
 | --- | --- | --- |
-| 입력 데이터 | `f_in, f_out, d_in, d_out, L, W, Z, raw_area, sections` | CSV에서 읽는 관측·스케줄 값 |
-| 계산값 | `V, wait, area, capacity, distance, route, size, transport, handling, rank` | 입력 데이터와 설정값으로 계산 |
+| 입력 데이터 | `f_in, f_out, d_in, d_out, L, W, Z, raw_area` | CSV에서 읽는 관측·스케줄 값 |
+| 계산값 | `V, wait, area, capacity, distance, route, size, transport, rank` | 입력 데이터와 설정값으로 계산 |
 | 하이퍼파라미터 | `alpha, max_util, threshold, slope, weights` | 실험자가 정책에 맞게 조정 |
 
 `l2_distance_m`은 가상 위·경도 좌표로부터 다음과 같이 생성했다. $R_E$는
@@ -74,12 +71,12 @@ d_{yf}={}&2R_E\arcsin\left(\sqrt{a_{yf}}\right)
 \end{aligned}
 ```
 
-블록 크기, 운송, 내부 취급 점수는 다음과 같다.
+블록 크기와 운송 점수는 다음과 같다.
 
 ```math
 q_b=
-0.70\frac{l_bw_b}{\mathrm{median}_{i\in\mathcal{B}^{W}}(l_iw_i)}
-+0.30\frac{v_b}{\mathrm{median}_{i\in\mathcal{B}^{W}}(v_i)}
+0.70\frac{l_bw_b}{\mathrm{median}_{i\in\mathcal{B}}(l_iw_i)}
++0.30\frac{v_b}{\mathrm{median}_{i\in\mathcal{B}}(v_i)}
 ```
 
 ```math
@@ -89,15 +86,8 @@ T_{by}
 \left(0.75+0.25q_b\right)
 ```
 
-```math
-H_{by}
-=
-h_b
-q_b
-\left(1+\frac{3}{\max(1,s_y)}\right)
-```
-
-여기서 $s_y$는 적치장 $y$의 lane 수이다.
+원본 데이터의 `number`는 적치장 개수이며 내부 구획 수로 해석하지 않는다.
+현재 모형은 입력 총면적을 용량으로 사용하며 `number`는 비용 계산에 사용하지 않는다.
 
 ## 2. Variables
 
@@ -109,8 +99,7 @@ q_b
 
 현재 모델에서는 적치장을 방문하는 목적이 블록 적치뿐이므로 “방문”과 “적치”는
 같은 사건이다. 따라서 별도의 방문변수와 적치변수를 만들지 않고 `x[b,y]`
-하나로 표현한다. 대기일이 0이면 직행하고, 대기일이 양수이면 아래 C1에 따라
-정확히 하나의 `x[b,y]`가 1이 된다.
+하나로 표현한다. 모든 블록은 아래 C1에 따라 정확히 하나의 `x[b,y]`가 1이 된다.
 
 ### 2.2 Linearization auxiliary variables
 
@@ -134,7 +123,7 @@ p_y=\max_{d\in\mathcal D}\frac{L_{yd}}{C_y}
 ```math
 L_{yd}
 =
-\sum_{b\in\mathcal{B}^{W}_d:\,y\in\mathcal{Y}_b}
+\sum_{b\in\mathcal{B}_d:\,y\in\mathcal{Y}_b}
 a_bx_{by}
 ```
 
@@ -146,17 +135,16 @@ a_bx_{by}
 c_{by}
 =
 w_TT_{by}
-+w_HH_{by}
 +w_RR_{by}
 ```
 
-전체 목적함수는 운송, 내부 취급, first-fit 순위 이탈, 일별 혼잡도,
+전체 목적함수는 운송, first-fit 순위 이탈, 일별 혼잡도,
 적치장 최대 이용률을 최소화한다.
 
 ```math
 \begin{aligned}
 \min Z ={}&
-\sum_{b\in\mathcal{B}^{W}}
+\sum_{b\in\mathcal{B}}
 \sum_{y\in\mathcal{Y}_b}
 c_{by}x_{by} \\
 &+w_U
@@ -169,20 +157,16 @@ c_{by}x_{by} \\
 \tag{OBJ}
 ```
 
-$b\notin\mathcal{B}^{W}$인 직행 블록은 적치장 의사결정변수가 없으며 위
-적치장 운영비에는 포함되지 않는다.
-
 ## 4. Constraints
 
 ### 4.1 Unique assignment
 
-대기일이 양수인 블록만 후보 적치장 중 정확히 한 곳에 배정한다.
-대기일이 0인 블록은 다음 공장으로 직행하므로 배정변수를 생성하지 않는다.
+모든 블록을 후보 적치장 중 정확히 한 곳에 배정한다.
 
 ```math
 \sum_{y\in\mathcal{Y}_b}x_{by}=1
 \qquad
-\forall b\in\mathcal{B}^{W}
+\forall b\in\mathcal{B}
 \tag{C1}
 ```
 
@@ -236,7 +220,7 @@ e_{ydk}
 ```math
 x_{by}\in\{0,1\}
 \qquad
-\forall b\in\mathcal{B}^{W},\ y\in\mathcal{Y}_b
+\forall b\in\mathcal{B},\ y\in\mathcal{Y}_b
 \tag{C5}
 ```
 
@@ -261,7 +245,6 @@ x_{by}\in\{0,1\}
 | `alpha` | 1.15 |
 | `max_util` | 0.95 |
 | `w_T` | 1.00 |
-| `w_H` | 0.35 |
 | `w_R` | 0.20 |
 | `w_U` | 1.00 |
 | `w_P` | 6.00 |
@@ -274,7 +257,7 @@ x_{by}\in\{0,1\}
 
 ## 6. Candidate-domain preprocessing
 
-대기 블록 $b\in\mathcal{B}^{W}$에 대해 다음 조건을 만족하는 적치장만
+모든 블록 $b\in\mathcal{B}$에 대해 다음 조건을 만족하는 적치장만
 $\mathcal{Y}_b$의 후보가 될 수 있다.
 
 ```math
@@ -288,7 +271,7 @@ a_b\le\bar{u}C_y
 
 ## 7. First-fit policy
 
-First-fit은 대기 블록에만 적용하며 하드 제약이 아니다.
+First-fit은 모든 블록에 적용하며 하드 제약이 아니다.
 
 - $R_{by}$를 목적함수에 포함하여 우선순위가 낮은 후보에 비용을 부과한다.
 - 동일한 순위 기준으로 초기 배정안을 만들고 OR-Tools 해 탐색 힌트로 전달한다.
@@ -298,10 +281,10 @@ First-fit은 대기 블록에만 적용하며 하드 제약이 아니다.
 
 | 수식 | 구현 |
 | --- | --- |
-| 후보 집합 및 `transport[b,y]`, `handling[b,y]`, `rank[b,y]` | [`build_assignment_options`](solver.py#L137) |
-| `x[b,y]` | [`create_assignment_variables`](constraints.py#L155) |
-| (C1) | [`add_exactly_one_yard_constraints`](constraints.py#L175) |
-| `load[y,d]` | [`build_daily_active_terms`](constraints.py#L193) |
-| (C2)–(C4), (C6)–(C7) | [`add_daily_capacity_and_congestion_constraints`](constraints.py#L209) |
-| (OBJ) | [`set_minimum_operating_cost_objective`](constraints.py#L284) |
-| first-fit 초기해 | [`apply_first_fit_hint`](solver.py#L248) |
+| 후보 집합 및 `transport[b,y]`, `rank[b,y]` | [`build_assignment_options`](solver.py) |
+| `x[b,y]` | [`create_assignment_variables`](constraints.py) |
+| (C1) | [`add_exactly_one_yard_constraints`](constraints.py) |
+| `load[y,d]` | [`build_daily_active_terms`](constraints.py) |
+| (C2)–(C4), (C6)–(C7) | [`add_daily_capacity_and_congestion_constraints`](constraints.py) |
+| (OBJ) | [`set_minimum_operating_cost_objective`](constraints.py) |
+| first-fit 초기해 | [`apply_first_fit_hint`](solver.py) |
