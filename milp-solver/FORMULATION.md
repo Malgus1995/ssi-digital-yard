@@ -43,8 +43,7 @@ d_b^{\mathrm{in}} \le d < d_b^{\mathrm{out}}
 | `area[b]` | m² | 블록 유효 점유 면적 | `area[b] := alpha * L[b] * W[b]` |
 | `raw_area[y]` | m² | 적치장 총면적 | `raw_area[y] := CSV_Y[y].area_m2` |
 | `sections[y]` | lane | 적치장 구획 수 | `sections[y] := max(1, CSV_Y[y].number)` |
-| `usable_ratio` | - | 사용 가능 면적 비율 | `usable_ratio := 0.75` |
-| `capacity[y]` | m² | 적치장 사용 가능 면적 | `capacity[y] := usable_ratio * raw_area[y]` |
+| `capacity[y]` | m² | 적치장 사용 가능 면적 | `capacity[y] := raw_area[y]` |
 | `max_util` | - | 허용 최대 이용률 | `max_util := 0.95` |
 | `distance[y,f]` | m | 적치장과 공장의 L2 거리 | `distance[y,f] := CSV_D[y,f].l2_distance_m` |
 | `route[b,y]` | m | 블록의 적치장 경유 총거리 | `route[b,y] := distance[y,f_in[b]] + distance[y,f_out[b]]` |
@@ -59,7 +58,7 @@ d_b^{\mathrm{in}} \le d < d_b^{\mathrm{out}}
 | --- | --- | --- |
 | 입력 데이터 | `f_in, f_out, d_in, d_out, L, W, Z, raw_area, sections` | CSV에서 읽는 관측·스케줄 값 |
 | 계산값 | `V, wait, area, capacity, distance, route, size, transport, handling, rank` | 입력 데이터와 설정값으로 계산 |
-| 하이퍼파라미터 | `alpha, usable_ratio, max_util, threshold, slope, weights` | 실험자가 정책에 맞게 조정 |
+| 하이퍼파라미터 | `alpha, max_util, threshold, slope, weights` | 실험자가 정책에 맞게 조정 |
 
 `l2_distance_m`은 가상 위·경도 좌표로부터 다음과 같이 생성했다. $R_E$는
 지구 반지름, $\phi$는 위도, $\lambda$는 경도이며 현장 규모에서는 평면 L2
@@ -189,7 +188,8 @@ $b\notin\mathcal{B}^{W}$인 직행 블록은 적치장 의사결정변수가 없
 
 ### 4.2 Daily capacity
 
-날짜별 점유 면적은 허용 최대 용량을 넘을 수 없다.
+적치장 용량 `capacity[y]`는 총면적 `raw_area[y]`를 그대로 사용한다.
+날짜별 점유 면적은 총면적에 허용 최대 이용률 `max_util`을 곱한 한도를 넘을 수 없다.
 
 ```math
 L_{yd}\le\bar{u}C_y
@@ -259,7 +259,6 @@ x_{by}\in\{0,1\}
 | 항목 | 기본값 |
 | --- | ---: |
 | `alpha` | 1.15 |
-| `usable_ratio` | 0.75 |
 | `max_util` | 0.95 |
 | `w_T` | 1.00 |
 | `w_H` | 0.35 |

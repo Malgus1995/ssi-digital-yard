@@ -91,7 +91,7 @@ def load_blocks(path: Path, limit: int) -> List[Block]:
     return blocks
 
 
-def load_yards(path: Path, config: ModelConfig) -> Tuple[List[Yard], List[str]]:
+def load_yards(path: Path) -> Tuple[List[Yard], List[str]]:
     yards: List[Yard] = []
     skipped: List[str] = []
     for row in read_csv(path):
@@ -112,7 +112,7 @@ def load_yards(path: Path, config: ModelConfig) -> Tuple[List[Yard], List[str]]:
                 zone=row["position"].strip(),
                 raw_area_m2=raw_area,
                 sections=sections,
-                usable_area_m2=raw_area * config.usable_area_ratio,
+                usable_area_m2=raw_area,
             )
         )
     if not yards:
@@ -574,7 +574,6 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--backend", choices=("SCIP", "CBC"), default="SCIP")
     parser.add_argument("--time-limit-seconds", type=float, default=60.0)
     parser.add_argument("--threads", type=int, default=4)
-    parser.add_argument("--usable-area-ratio", type=float, default=0.75)
     parser.add_argument("--spacing-factor", type=float, default=1.15)
     parser.add_argument("--max-utilization", type=float, default=0.95)
     parser.add_argument("--transport-weight", type=float, default=1.0)
@@ -596,8 +595,6 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         parser.error("candidate counts must be zero or positive")
     if args.time_limit_seconds <= 0 or args.threads <= 0:
         parser.error("time limit and thread count must be positive")
-    if not 0 < args.usable_area_ratio <= 1:
-        parser.error("--usable-area-ratio must be in (0, 1]")
     if not 0 < args.max_utilization <= 1:
         parser.error("--max-utilization must be in (0, 1]")
     if args.spacing_factor < 1:
@@ -609,7 +606,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parse_args(argv)
     config = ModelConfig(
         spacing_factor=args.spacing_factor,
-        usable_area_ratio=args.usable_area_ratio,
         max_utilization=args.max_utilization,
     )
     weights = CostWeights(
@@ -621,7 +617,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
 
     blocks = load_blocks(args.schedule, args.limit)
-    yards, skipped_yards = load_yards(args.nodes, config)
+    yards, skipped_yards = load_yards(args.nodes)
     distances = load_distances(args.distances)
     options_by_block = build_assignment_options(
         blocks,

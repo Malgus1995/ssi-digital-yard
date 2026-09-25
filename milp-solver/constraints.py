@@ -96,7 +96,6 @@ class ModelConfig:
     """Capacity and congestion assumptions used by the MIP."""
 
     spacing_factor: float = 1.15
-    usable_area_ratio: float = 0.75
     max_utilization: float = 0.95
     # (utilization threshold, marginal score per 1,000 excess m2-day)
     congestion_bands: Tuple[Tuple[float, float], ...] = (
