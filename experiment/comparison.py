@@ -30,9 +30,6 @@ def build_comparison_rows(runs: Sequence[MethodRun]) -> List[Dict[str, object]]:
                 "transport_cost": standard_cost.get("breakdown", {}).get(
                     "transport", ""
                 ),
-                "internal_handling_cost": standard_cost.get("breakdown", {}).get(
-                    "internal_handling", ""
-                ),
                 "utilization_cost": standard_cost.get("breakdown", {}).get(
                     "daily_utilization", ""
                 ),

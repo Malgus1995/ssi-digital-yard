@@ -11,13 +11,12 @@
 - `solution_summary.json`
 
 비용을 공정하게 비교하려면 배정 CSV에 `transport_score`,
-`handling_risk_score`, `first_fit_rank`가 있어야 합니다. 이용률 CSV에는
+`first_fit_rank`가 있어야 합니다. 이용률 CSV에는
 `date`, `yard_code`, `active_blocks`, `used_area_m2`, `usable_area_m2`,
 `utilization`이 필요합니다.
 
-배정 CSV는 모든 블록을 유지합니다. `storage_mode`이
-`DIRECT_TO_FACTORY`이면 다음 공장이 당일 수용한 블록으로 적치장을 사용하지
-않으며, `STOCKYARD`이면 공장 수용일까지 적치장에서 대기한 블록입니다.
+배정 CSV는 모든 블록을 유지하며 `storage_mode`는 `STOCKYARD`입니다.
+당일 입출고 블록도 적치장에 배정하지만 일별 점유 면적에는 포함하지 않습니다.
 
 현재 OR 어댑터는 `milp-solver/solver.py`에 연결되어 있습니다. 향후 아래
 경로에 같은 CLI 계약의 파일을 추가하면 `main.py --methods all`에 자동으로

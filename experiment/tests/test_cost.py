@@ -8,7 +8,6 @@ class StandardCostTests(TestCase):
         assignments = [
             {
                 "transport_score": "10",
-                "handling_risk_score": "4",
                 "first_fit_rank": "2",
             }
         ]
@@ -22,8 +21,8 @@ class StandardCostTests(TestCase):
 
         result = calculate_standard_cost_from_rows(assignments, utilization)
 
-        # Assignment: 10 + 4*0.35 + 2*0.20 = 11.8
+        # Assignment: 10 + 2*0.20 = 10.4
         # Congestion: (300*2 + 100*6) / 1000 = 1.2
         # Peak: 0.8 * 6 = 4.8
-        self.assertAlmostEqual(result["total_cost"], 17.8)
+        self.assertAlmostEqual(result["total_cost"], 16.4)
         self.assertAlmostEqual(result["breakdown"]["daily_utilization"], 1.2)

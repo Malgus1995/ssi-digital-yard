@@ -1,0 +1,8 @@
+{
+  "name": "ssi-digital-yard",
+  "private": true,
+  "scripts": {
+    "start": "node yard-viewer/server.mjs",
+    "dev": "node yard-viewer/server.mjs"
+  }
+}

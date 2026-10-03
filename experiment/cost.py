@@ -11,7 +11,6 @@ from typing import Dict, Iterable, List, Mapping, Sequence, Tuple
 
 DEFAULT_WEIGHTS = {
     "transport": 1.0,
-    "internal_handling": 0.35,
     "first_fit_rank": 0.20,
     "utilization": 1.0,
     "peak_utilization": 6.0,
@@ -40,7 +39,6 @@ def calculate_standard_cost_from_rows(
     congestion_bands = tuple(congestion_bands)
     required_assignment_fields = {
         "transport_score",
-        "handling_risk_score",
         "first_fit_rank",
     }
     if assignments:
@@ -53,9 +51,6 @@ def calculate_standard_cost_from_rows(
 
     transport = weights["transport"] * sum(
         float(row["transport_score"]) for row in assignments
-    )
-    internal_handling = weights["internal_handling"] * sum(
-        float(row["handling_risk_score"]) for row in assignments
     )
     first_fit_rank = weights["first_fit_rank"] * sum(
         float(row["first_fit_rank"]) for row in assignments
@@ -70,16 +65,15 @@ def calculate_standard_cost_from_rows(
         peak_by_yard[row["yard_code"]] = max(
             peak_by_yard[row["yard_code"]], utilization
         )
-        for threshold, slope in congestion_bands:
+        for threshold, penalty_coefficient in congestion_bands:
             excess_area = max(0.0, used_area - threshold * capacity)
             daily_utilization += (
-                weights["utilization"] * slope * excess_area / 1_000.0
+                weights["utilization"] * penalty_coefficient * excess_area / 1_000.0
             )
 
     peak_utilization = weights["peak_utilization"] * sum(peak_by_yard.values())
     breakdown = {
         "transport": transport,
-        "internal_handling": internal_handling,
         "first_fit_rank": first_fit_rank,
         "daily_utilization": daily_utilization,
         "peak_utilization": peak_utilization,

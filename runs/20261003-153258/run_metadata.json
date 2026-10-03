@@ -1,0 +1,23 @@
+{
+  "methods": [
+    "or"
+  ],
+  "implemented_methods": {
+    "or": true,
+    "sa": false,
+    "rl": false
+  },
+  "inputs": {
+    "schedule": "/Users/sujung/Desktop/project/ssi-digital-yard/data/block_schedule.csv",
+    "nodes": "/Users/sujung/Desktop/project/ssi-digital-yard/data/적치장 노드 정보.csv",
+    "distances": "/Users/sujung/Desktop/project/ssi-digital-yard/data/yard_process_distances.csv"
+  },
+  "parameters": {
+    "limit": 0,
+    "time_limit_seconds": 7200.0,
+    "threads": 4,
+    "candidate_yards": 8,
+    "overflow_yards": 2,
+    "backend": "SCIP"
+  }
+}

@@ -11,6 +11,7 @@ from typing import List, Optional, Sequence
 
 from experiment.comparison import write_comparison
 from experiment.contracts import MethodRun, RunConfig
+from experiment.snapshots import write_snapshots
 from experiment.cost import calculate_standard_cost
 from experiment.runners import implemented_methods, normalize_methods, run_method
 from experiment.visualization import (
@@ -144,6 +145,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 run.utilization_path,
                 run.output_dir / "standard_cost.json",
             )
+            write_snapshots(run.output_dir, config.nodes_path)
         print(f"[{method.upper()}] {run.status}: {run.message}")
         runs.append(run)
 

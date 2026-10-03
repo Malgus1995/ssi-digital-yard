@@ -1,6 +1,6 @@
 # SSI Digital Yard
 
-선박 블록의 공장 간 이동거리, 적치장 내부 취급 위험, 일별 혼잡도를 함께
+선박 블록의 공장 간 이동거리, 후보 순위, 일별 혼잡도와 최대 이용률을 함께
 고려하는 디지털 트윈 최적화 실험 프로젝트입니다. 동일한 입력과 비용식으로
 OR, Simulated Annealing(SA), Reinforcement Learning(RL)을 비교합니다.
 
@@ -71,3 +71,14 @@ python main.py --methods or --limit 0 --time-limit-seconds 300
 ```
 
 결과는 `runs/<실행시각>/`에 저장됩니다.
+
+## 일별 적치장 화면
+
+`main.py` 실행 시 결과 폴더에 일별 JSON 스냅샷도 저장합니다.
+
+```bash
+npm start
+```
+
+[localhost:3000](http://localhost:3000)에서 날짜별 입고·출고 경로, 적치 중인 블록,
+적치장 이용률을 확인할 수 있습니다. [뷰어 사용 안내](yard-viewer/README.md).
