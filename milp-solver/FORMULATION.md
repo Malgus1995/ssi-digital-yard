@@ -48,14 +48,14 @@ d_b^{\mathrm{in}} \le d < d_b^{\mathrm{out}}
 | `size[b]` | - | 면적 70%·체적 30% 크기 계수 | `size[b] := 0.70*(L[b]*W[b])/median(L*W) + 0.30*V[b]/median(V)` |
 | `transport[b,y]` | score | 운송 비용 점수 | `transport[b,y] := route[b,y]/1000 * (0.75 + 0.25*size[b])` |
 | `rank[b,y]` | rank | first-fit 후보 순위 | `rank[b,y] := zero_based_rank(route[b,y], yard_code)` |
-| `threshold[k]`, `slope[k]` | - | 혼잡 임계값·기울기 | `(threshold, slope) := (0.50,2), (0.70,6), (0.85,18)` |
+| `threshold[k]`, `penalty_coefficient[k]` | - | 혼잡 임계값·페널티 계수 | `(threshold, penalty_coefficient) := (0.50,2), (0.70,6), (0.85,18)` |
 | `w_T,w_R,w_U,w_P` | - | 목적함수 가중치 | `(w_T,w_R,w_U,w_P) := (1.00,0.20,1.00,6.00)` |
 
 | 구분 | 해당 파라미터 | 의미 |
 | --- | --- | --- |
 | 입력 데이터 | `f_in, f_out, d_in, d_out, L, W, Z, raw_area` | CSV에서 읽는 관측·스케줄 값 |
 | 계산값 | `V, wait, area, capacity, distance, route, size, transport, rank` | 입력 데이터와 설정값으로 계산 |
-| 하이퍼파라미터 | `alpha, max_util, threshold, slope, weights` | 실험자가 정책에 맞게 조정 |
+| 하이퍼파라미터 | `alpha, max_util, threshold, penalty_coefficient, weights` | 실험자가 정책에 맞게 조정 |
 
 `l2_distance_m`은 가상 위·경도 좌표로부터 다음과 같이 생성했다. $R_E$는
 지구 반지름, $\phi$는 위도, $\lambda$는 경도이며 현장 규모에서는 평면 L2
@@ -249,7 +249,7 @@ x_{by}\in\{0,1\}
 | `w_U` | 1.00 |
 | `w_P` | 6.00 |
 
-| `k` | `threshold[k]` | `slope[k]` |
+| `k` | `threshold[k]` | `penalty_coefficient[k]` |
 | ---: | ---: | ---: |
 | 1 | 0.50 | 2.0 |
 | 2 | 0.70 | 6.0 |

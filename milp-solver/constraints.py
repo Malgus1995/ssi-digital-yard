@@ -80,7 +80,7 @@ class ModelConfig:
 
     spacing_factor: float = 1.15
     max_utilization: float = 0.95
-    # (utilization threshold, marginal score per 1,000 excess m2-day)
+    # (utilization threshold, penalty coefficient per 1,000 excess m2-day)
     congestion_bands: Tuple[Tuple[float, float], ...] = (
         (0.50, 2.0),
         (0.70, 6.0),
@@ -237,7 +237,7 @@ class StockyardModelBuilder:
                 self.peak_utilization_vars[yard_code], -capacity
             )
 
-            for band_index, (threshold, slope) in enumerate(
+            for band_index, (threshold, penalty_coefficient) in enumerate(
                 self.config.congestion_bands
             ):
                 max_excess = max(
@@ -260,7 +260,7 @@ class StockyardModelBuilder:
                 band_constraint.SetCoefficient(excess, -1.0)
                 self.excess_area_vars[(yard_code, day, threshold)] = (
                     excess,
-                    slope,
+                    penalty_coefficient,
                 )
 
     def set_minimum_operating_cost_objective(self) -> None:
@@ -275,10 +275,10 @@ class StockyardModelBuilder:
             )
             objective.SetCoefficient(variable, coefficient)
 
-        for excess, marginal_slope in self.excess_area_vars.values():
+        for excess, penalty_coefficient in self.excess_area_vars.values():
             objective.SetCoefficient(
                 excess,
-                self.weights.utilization * marginal_slope / 1_000.0,
+                self.weights.utilization * penalty_coefficient / 1_000.0,
             )
 
         for peak_variable in self.peak_utilization_vars.values():

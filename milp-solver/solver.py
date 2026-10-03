@@ -363,8 +363,8 @@ def calculate_objective_breakdown(
     transport = sum(option.transport_score for option in selected_options)
     first_fit = sum(option.first_fit_rank for option in selected_options)
     utilization = sum(
-        weights.utilization * slope * variable.solution_value() / 1_000.0
-        for variable, slope in artifacts.excess_area_vars.values()
+        weights.utilization * penalty_coefficient * variable.solution_value() / 1_000.0
+        for variable, penalty_coefficient in artifacts.excess_area_vars.values()
     )
     peak = sum(
         weights.peak_utilization * variable.solution_value()

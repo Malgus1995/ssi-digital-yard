@@ -1,0 +1,168 @@
+\documentclass[a4paper,11pt]{article}
+\usepackage{kotex}
+\usepackage{amsmath,amssymb,booktabs,tabularx}
+\usepackage[margin=25mm]{geometry}
+\begin{document}
+\section{Mathematical Formulation}
+스케줄의 모든 블록을 하나의 적치장에 배정하는 혼합정수선형계획(MILP) 모형을 정의한다.
+블록은 적치기간 동안 같은 적치장에 머무른다. 적치장 용량은 입력 총면적을 그대로 사용한다.
+당일 입출고 블록도 적치장에 배정하지만, 일 단위 점유 면적에는 포함하지 않는다.
+따라서 당일 입출고의 시간대별 혼잡은 다루지 않는다.
+
+\subsection{Notation}
+\begin{table}[htbp]
+\centering
+\caption{Sets and indices}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+기호 & 정의 \\
+\midrule
+$\mathcal B$ & 스케줄의 전체 블록 집합 \\
+$\mathcal Y$ & 적치장 집합 \\
+$\mathcal Y_b$ & 블록 $b$의 후보 적치장 집합 \\
+$\mathcal D$ & 계획기간의 날짜 집합 \\
+$\mathcal B_d$ & 날짜 $d$에 면적을 점유하는 블록 집합 \\
+$\mathcal K$ & 혼잡도 구간 집합 \\
+$b,y,d,k$ & 블록, 적치장, 날짜, 혼잡도 구간 인덱스 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+\begin{equation}
+\mathcal B_d=\{b\in\mathcal B:t_b^{\mathrm{in}}\le d<t_b^{\mathrm{out}}\}.
+\end{equation}
+입고일에는 면적을 점유하고 출고일에는 점유하지 않는다.
+
+\begin{table}[htbp]
+\centering
+\caption{Parameters}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+기호 & 정의 \\
+\midrule
+$t_b^{\mathrm{in}},t_b^{\mathrm{out}}$ & 적치장 입고일 및 출고일 \\
+$f_b^{\mathrm{in}},f_b^{\mathrm{out}}$ & 선행 공장 및 다음 공장 \\
+$l_b,w_b,z_b$ & 블록의 길이, 너비, 높이 (m) \\
+$v_b,h_b$ & 블록 체적 ($\mathrm m^3$) 및 적치일 수 \\
+$\alpha$ & 작업 여유 면적 계수 \\
+$a_b$ & 블록 유효 점유 면적 ($\mathrm m^2$) \\
+$C_y$ & 적치장 총면적 ($\mathrm m^2$) \\
+$\bar u$ & 허용 최대 이용률 \\
+$\delta_{yf}$ & 적치장 $y$와 공장 $f$ 간 거리 (m) \\
+$D_{by}$ & 블록 $b$의 적치장 $y$ 경유 총거리 (m) \\
+$q_b$ & 블록의 상대적 크기 계수 \\
+$T_{by}$ & 운송 점수 \\
+$R_{by}$ & 후보 축소 전 거리순 순위 (0부터 시작) \\
+$\theta_k,\gamma_k$ & 혼잡 임계값 및 혼잡 페널티 계수 \\
+$\lambda_T,\lambda_R,\lambda_U,\lambda_P$ & 목적함수 항별 가중치 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+다음 계수는 최적화 전에 계산한다.
+\begin{align}
+v_b&=l_bw_bz_b, & h_b&=t_b^{\mathrm{out}}-t_b^{\mathrm{in}}, & a_b&=\alpha l_bw_b,\\
+D_{by}&=\delta_{y,f_b^{\mathrm{in}}}+\delta_{y,f_b^{\mathrm{out}}}.
+\end{align}
+\begin{align}
+q_b&=0.70\frac{l_bw_b}{\operatorname{median}_{i\in\mathcal B}(l_iw_i)}
++0.30\frac{v_b}{\operatorname{median}_{i\in\mathcal B}(v_i)},\\
+T_{by}&=\frac{D_{by}}{1000}(0.75+0.25q_b).
+\end{align}
+$\alpha$는 작업 공간을 면적 증가로 간접 반영한다.
+원본 데이터의 \texttt{number}는 적치장 개수이며 내부 구획 수로 해석하지 않는다.
+현재 모형은 입력 총면적을 용량으로 사용하며 적치장 개수는 비용 계산에 사용하지 않는다.
+
+\begin{table}[htbp]
+\centering
+\caption{Decision and auxiliary variables}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+기호 & 정의 \\
+\midrule
+$x_{by}$ & 블록 $b$를 적치장 $y$에 배정하면 1, 그렇지 않으면 0 \\
+$e_{ydk}$ & 날짜 $d$, 적치장 $y$에서 임계 면적 $\theta_kC_y$의 초과 면적 \\
+$p_y$ & 계획기간 중 적치장 $y$의 최대 이용률 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+날짜별 점유 면적은 별도 변수가 아닌 다음 선형식으로 정의한다.
+\begin{equation}
+L_{yd}:=\sum_{\substack{b\in\mathcal B_d\\y\in\mathcal Y_b}}a_bx_{by}.
+\end{equation}
+
+\subsection{Objective Function}
+\begin{equation}
+\begin{aligned}
+\min\quad &\sum_{b\in\mathcal B}\sum_{y\in\mathcal Y_b}
+(\lambda_TT_{by}+\lambda_RR_{by})x_{by}\\
+&+\lambda_U\sum_{y\in\mathcal Y}\sum_{d\in\mathcal D}\sum_{k\in\mathcal K}
+\frac{\gamma_k}{1000}e_{ydk}+\lambda_P\sum_{y\in\mathcal Y}p_y.
+\end{aligned}
+\label{eq:objective}
+\end{equation}
+운송, 후보 순위, 일별 혼잡도 및 최대 이용률을 최소화한다.
+목적함수는 화폐 단위가 아닌 가중 비용 점수이다. 혼잡 페널티는 임계값별로 누적 적용된다.
+
+\subsection{Constraints}
+\paragraph{단일 적치장 배정.}
+모든 블록을 정확히 한 적치장에 배정한다.
+\begin{equation}
+\sum_{y\in\mathcal Y_b}x_{by}=1\qquad\forall b\in\mathcal B.
+\end{equation}
+\paragraph{일별 적치 용량.}
+\begin{equation}
+L_{yd}\le\bar u C_y\qquad\forall y\in\mathcal Y,\ d\in\mathcal D.
+\end{equation}
+\paragraph{최대 이용률.}
+\begin{equation}
+L_{yd}\le C_yp_y\qquad\forall y\in\mathcal Y,\ d\in\mathcal D.
+\end{equation}
+\paragraph{혼잡도 초과 면적.}
+\begin{equation}
+e_{ydk}\ge L_{yd}-\theta_kC_y
+\qquad\forall y\in\mathcal Y,\ d\in\mathcal D,\ k\in\mathcal K.
+\end{equation}
+\paragraph{변수 정의역.}
+\begin{align}
+x_{by}&\in\{0,1\}&&\forall b\in\mathcal B,\ y\in\mathcal Y_b,\\
+0\le p_y&\le\bar u&&\forall y\in\mathcal Y,\\
+0\le e_{ydk}&\le\max\{0,(\bar u-\theta_k)C_y\}
+&&\forall y\in\mathcal Y,\ d\in\mathcal D,\ k\in\mathcal K.
+\end{align}
+$\lambda_P>0$ 및 $\lambda_U\gamma_k>0$이면 최적해에서
+\begin{equation}
+p_y=\max_{d\in\mathcal D}\frac{L_{yd}}{C_y},\qquad
+e_{ydk}=\max\{0,L_{yd}-\theta_kC_y\}.
+\end{equation}
+최댓값을 사용하는 비용을 선형 목적함수와 제약조건으로 표현한다.
+
+\subsection{Candidate Selection}
+블록별 배정 가능 집합은
+\begin{equation}
+\mathcal F_b=\{y\in\mathcal Y:a_b\le\bar uC_y,\ 
+\delta_{y,f_b^{\mathrm{in}}}\text{와 }\delta_{y,f_b^{\mathrm{out}}}\text{가 존재}\}.
+\end{equation}
+$\mathcal N_b$를 $\mathcal F_b$에서 경유 거리가 가장 짧은 최대 8개 적치장,
+$\mathcal O$를 전체 적치장 중 총면적이 가장 큰 최대 2개 적치장으로 정의한다.
+\begin{equation}
+\mathcal Y_b=\mathcal N_b\cup(\mathcal O\cap\mathcal F_b).
+\end{equation}
+거리 동률은 적치장 코드순으로 처리한다.
+$R_{by}$는 $\mathcal F_b$에서의 거리순 순위이며, 최적성은 제한된 후보 집합을 기준으로 한다.
+First-fit은 초기해와 순위 페널티에 사용하며 하드 제약이 아니다.
+
+\subsection{Default Parameters}
+\begin{center}
+\begin{tabular}{lc}
+\toprule
+파라미터 & 기본값 \\
+\midrule
+$\alpha$ & $1.15$ \\
+$\bar u$ & $0.95$ \\
+$(\lambda_T,\lambda_R,\lambda_U,\lambda_P)$ & $(1,0.20,1,6)$ \\
+$(\theta_1,\theta_2,\theta_3)$ & $(0.50,0.70,0.85)$ \\
+$(\gamma_1,\gamma_2,\gamma_3)$ & $(2,6,18)$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{document}
