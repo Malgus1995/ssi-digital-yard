@@ -1,0 +1,18 @@
+{
+  "spacing_factor": 1.15,
+  "max_utilization": 0.95,
+  "movement_rate_per_m": 1.0,
+  "default_yard_rate": 0.001,
+  "default_tier": 1,
+  "threshold_by_tier": {
+    "1": 0.50,
+    "2": 0.70,
+    "3": 0.85
+  },
+  "congestion_rate": {
+    "1": 2,
+    "2": 6,
+    "3": 18
+  },
+  "yard_overrides": {}
+}

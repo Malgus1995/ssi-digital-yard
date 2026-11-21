@@ -1,0 +1,5 @@
+[
+  {"id": "milp", "name": "MILP", "path": "runs/milp/result.json"},
+  {"id": "rl", "name": "강화학습 (RL)", "path": "runs/rl/result.json"},
+  {"id": "heuristic", "name": "휴리스틱", "path": "runs/heuristic/result.json"}
+]
