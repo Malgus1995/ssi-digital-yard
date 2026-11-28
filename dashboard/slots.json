@@ -1,5 +1,10 @@
 [
   {"id": "milp", "name": "MILP", "path": "runs/milp/result.json"},
+  {"id": "milp_audit", "name": "MILP 재실행 · 30초 제한", "path": "runs/milp-audit/cold/result.json"},
+  {"id": "meta", "name": "메타휴리스틱 · 최선", "path": "runs/meta-heuristics/result.json"},
+  {"id": "greedy", "name": "Greedy", "path": "runs/meta-heuristics/greedy/result.json"},
+  {"id": "sa", "name": "Greedy + SA", "path": "runs/meta-heuristics/sa/result.json"},
+  {"id": "tabu", "name": "Greedy + Tabu", "path": "runs/meta-heuristics/tabu/result.json"},
   {"id": "rl", "name": "강화학습 (RL)", "path": "runs/rl/result.json"},
   {"id": "heuristic", "name": "휴리스틱", "path": "runs/heuristic/result.json"}
 ]

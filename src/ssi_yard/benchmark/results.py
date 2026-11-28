@@ -1,4 +1,6 @@
 import json
+import os
+import tempfile
 from pathlib import Path
 from collections import defaultdict
 from ssi_yard.domain import Block
@@ -55,5 +57,13 @@ def save_result(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with output_path.open("w", encoding="utf-8") as file:
-        json.dump(result, file, ensure_ascii=False, indent=2)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=output_path.parent,
+                                         prefix=output_path.name + '.', suffix='.tmp', delete=False) as file:
+            temporary = file.name
+            json.dump(result, file, ensure_ascii=False, indent=2, allow_nan=False)
+        os.replace(temporary, output_path)
+    finally:
+        if temporary and os.path.exists(temporary):
+            os.unlink(temporary)

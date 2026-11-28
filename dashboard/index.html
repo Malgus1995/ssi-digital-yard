@@ -1,8 +1,78 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SSI · Digital Yard</title><link rel="stylesheet" href="style.css"></head><body>
-<header><a class="brand" href="./"><span class="logo">S</span> SSI <span>DIGITAL YARD</span></a><div class="header-right"><span class="pill">알고리즘 비교</span><span>야드 운영 시뮬레이션</span></div></header>
-<main><section class="heading"><div><div class="eyebrow">YARD OPERATIONS / 공간과 이동</div><h1>적치장의 하루를 한눈에.</h1><p>날짜를 따라 블럭의 이동과 공간 점유를 탐색하세요.</p></div><div class="source">SOURCE <b id="sourcePath">runs/milp/result.json</b><span id="period">데이터를 불러오는 중…</span></div></section>
-<section class="comparison" aria-label="알고리즘 비교 슬롯"><div class="comparison-head"><div><b>알고리즘 비교 슬롯</b><p>슬롯을 선택해 지도를 전환하고, 같은 날짜의 결과를 비교하세요.</p></div><span>공통 GPS · 블럭 치수 · 날짜</span></div><div id="slots" class="slots"></div><div class="compare-scroll"><table><thead><tr><th>선택 날짜 기준</th><th>총 비용¹</th><th>배정 블럭</th><th>보관 블럭</th><th>점유면적</th><th>최대 야드 점유율</th><th>이동 / 입고 / 출고 / 직행</th></tr></thead><tbody id="comparisonBody"></tbody></table></div><p class="compare-note">¹ 실행 전체 비용 · 동일한 기간·대상 블럭·비용 단위일 때 비교하세요. 파일 업로드는 현재 브라우저 세션에만 적용됩니다.</p><div id="slotStatus" role="status"></div></section>
-<section class="stats" id="stats"></section>
-<section class="workspace"><div class="map-panel"><div class="map-toolbar"><div><b id="mapTitle">야드 공간 지도</b><span>GPS 기반 · 미터 단위</span></div><label><input id="routes" type="checkbox" checked> 이동 경로</label><label><input id="labels" type="checkbox" checked> 이름</label></div><div class="canvas-wrap" id="mapwrap"><canvas id="map" aria-label="확대와 이동이 가능한 야드 지도"></canvas><div class="map-caption">드래그로 이동 · 휠로 확대 · 적치장 / 블럭 클릭</div><div class="zoom"><button id="plus" aria-label="확대">+</button><button id="minus" aria-label="축소">−</button><button id="fit">전체</button></div><div class="legend"><span class="in">입고</span><span class="out">출고</span><span class="direct">직행</span><span class="stored">보관 블럭</span></div><div id="scale"></div></div><div class="map-note">실제 GPS·면적 기준 도식 지도 (복합 형상은 등면적 직사각형) · 내부 배치는 시각화용이며 배치 가능성을 보장하지 않습니다. 경로는 제공 도로의 최단시간 경로, 애니메이션 시간은 연출입니다.</div></div>
-<aside><div class="tabs"><button class="active" id="movesTab">당일 이동 <span id="moveCount"></span></button><button id="yardsTab">적치장 현황</button></div><input id="search" placeholder="블럭 또는 적치장 검색" aria-label="블럭 또는 적치장 검색"><div id="details" class="details">지도에서 적치장이나 블럭을 선택해 상세 정보를 확인하세요.</div><div id="list" class="list"></div></aside></section>
-<section class="timeline"><div class="playback"><button id="prev" aria-label="전날">‹</button><button id="play" class="primary">재생</button><button id="next" aria-label="다음날">›</button><select id="speed" aria-label="재생 속도"><option value="3600">0.5×</option><option value="1800" selected>1×</option><option value="900">2×</option><option value="450">4×</option></select></div><div class="date"><input id="date" type="date" aria-label="선택 날짜"><span id="dayinfo"></span></div><div class="slider"><input id="slider" type="range" min="0" value="0" aria-label="날짜 타임라인"><div><span id="start"></span><span>일별 재생 · 선택 날짜의 마감 재고 기준</span><span id="end"></span></div></div></section><div id="error" role="alert"></div></main><script src="app.js"></script></body></html>
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="MILP 결과로 탐색하는 적치장 공간, 일별 재고, 블록 이동 애니메이션">
+  <title>SSI Digital Yard · 야드 운영 지도</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <a class="brand" href="./" aria-label="SSI Digital Yard 홈"><span class="logo">S</span><b>SSI <span>DIGITAL YARD</span></b></a>
+    <nav aria-label="주 메뉴"><a class="nav-active" href="#workspace">운영 지도</a><a href="#comparison" id="compareLink">알고리즘 비교</a></nav>
+    <span class="header-status" id="algorithmStatus">MILP 시뮬레이션</span>
+  </header>
+  <main>
+    <section class="heading">
+      <div><div class="eyebrow">SPACE. BLOCKS. MOVEMENT.</div><h1>야드 운영 지도<span class="title-tag">일별 시뮬레이션</span></h1><p>날짜를 따라 이동을 재생하고, 블록이 차지하는 공간을 살펴보세요.</p></div>
+      <div class="source"><span>RESULT SOURCE</span><b id="sourcePath">runs/milp/result.json</b><span id="period">결과 데이터를 불러오는 중…</span></div>
+    </section>
+    <section class="run-panel" aria-label="알고리즘 실행">
+      <div class="run-heading"><div><b>알고리즘 실행</b><p>같은 입력으로 새 결과를 계산합니다. 아래 재생 버튼은 저장된 결과의 애니메이션입니다.</p></div><span id="runConnection" role="status">실행 서버 연결 확인 중</span></div>
+      <div class="run-controls"><label>MILP 제한 (초)<input id="milpLimit" type="number" min="1" max="3600" value="300"></label><label>SA·Tabu 각각 (초)<input id="metaLimit" type="number" min="0.1" max="120" step="0.1" value="5"></label><label>시드<input id="runSeed" type="number" min="0" max="2147483647" value="42"></label><button id="runBoth" class="primary" disabled>둘 다 동시 실행</button><button id="runMilp" disabled>MILP 실행</button><button id="runMeta" disabled>메타휴리스틱 실행</button><button id="cancelRun" disabled>실행 중지</button></div>
+      <p class="run-note">동시 실행은 CPU·메모리를 함께 사용하므로 단독 실행보다 느려질 수 있습니다. MILP 제한은 Solve 기준이며 모델 구성 시간은 별도입니다. 완료한 결과만 자동 반영합니다.</p>
+      <div id="runStatus" class="run-status" role="status" aria-live="polite">실행 이력 확인 중</div>
+      <details class="run-logs"><summary>실행 로그 보기</summary><pre id="runLogs">아직 실행한 작업이 없습니다.</pre></details>
+    </section>
+    <section class="stats" id="stats" aria-label="선택 날짜 운영 지표"><div class="loading">결과 데이터를 불러오는 중입니다.</div></section>
+    <section class="workspace" id="workspace" aria-label="야드 지도와 날짜별 이동">
+      <div class="map-panel">
+        <div class="map-toolbar">
+          <div class="map-heading"><span class="map-icon" aria-hidden="true">▦</span><b id="mapTitle">MILP · 야드 공간 지도</b></div>
+          <div class="map-options">
+            <select id="algorithm" aria-label="알고리즘 결과 선택"><option>MILP</option></select>
+            <select id="zone" aria-label="구역으로 이동"><option value="">전체 구역</option><option value="1dock">1도크</option><option value="2dock">2도크</option><option value="wharf">안벽</option><option value="texaco">텍사코</option><option value="e4">E4</option></select>
+            <select id="viewMode" aria-label="지도 표현"><option value="blocks">블록 배치</option><option value="occupancy">점유율</option></select>
+            <label><input id="routes" type="checkbox" checked> 이동</label><label><input id="labels" type="checkbox" checked> 이름</label>
+            <button id="expand" class="icon-button" aria-label="지도 크게 보기" title="지도 크게 보기">⛶</button>
+          </div>
+        </div>
+        <div class="canvas-wrap" id="mapwrap">
+          <canvas id="map" tabindex="0" aria-label="야드 지도. 방향키로 이동, 더하기와 빼기로 확대 축소, 0으로 전체 보기. 시설 상세는 오른쪽 목록에서도 선택할 수 있습니다."></canvas>
+          <div class="map-caption"><span class="caption-dot"></span><span id="layoutStatus">면적 비례 · 시설 간격 보정</span></div>
+          <div class="map-help">드래그 이동 · 휠 / 두 손가락 확대 · 더블클릭 확대</div>
+          <div class="north" aria-label="북쪽">N<span>▲</span></div>
+          <div class="zoom"><button id="plus" aria-label="확대">+</button><button id="minus" aria-label="축소">−</button><button id="fit" aria-label="전체 시설 보기">전체</button></div>
+          <div class="legend"><span class="in">입고</span><span class="out">출고</span><span class="direct">직행</span><span class="stored">보관</span><span class="factory">공장</span></div>
+          <div class="minimap-wrap"><span>OVERVIEW</span><canvas id="minimap" width="164" height="96" aria-label="전체 지도 미니맵"></canvas></div>
+          <div id="scale"></div>
+          <div id="tooltip" class="map-tooltip" hidden></div>
+        </div>
+        <div class="map-footer"><span id="mapSummary">선택 날짜의 마감 재고</span><span id="zoomLevel">전체 보기</span></div>
+      </div>
+      <aside>
+        <div class="aside-heading"><span class="eyebrow">DAILY OPERATIONS</span><b id="asideDate">날짜별 운영</b></div>
+        <div class="tabs" role="tablist" aria-label="지도 상세 목록"><button role="tab" aria-selected="true" class="active" id="movesTab">당일 이동 <span id="moveCount"></span></button><button role="tab" aria-selected="false" id="yardsTab">적치장</button><button role="tab" aria-selected="false" id="blocksTab">보관 블록</button></div>
+        <div class="search-wrap"><span aria-hidden="true">⌕</span><input id="search" placeholder="블록 코드 또는 적치장 검색" aria-label="블록 코드 또는 적치장 검색"></div>
+        <div id="details" class="details" role="status">적치장이나 블록을 선택하면<br>면적과 이동 경로를 확인할 수 있습니다.</div>
+        <div id="list" class="list" role="tabpanel" aria-label="운영 목록"></div>
+        <div class="list-footer" id="listFooter">목록에서 선택하면 지도가 확대됩니다.</div>
+      </aside>
+    </section>
+    <section class="timeline" aria-label="날짜별 애니메이션 제어">
+      <div class="timeline-top">
+        <div class="playback"><button id="prev" aria-label="전날">‹</button><button id="play" class="primary" aria-pressed="false">재생</button><button id="next" aria-label="다음날">›</button><select id="speed" aria-label="재생 속도"><option value="6000">0.5×</option><option value="3000" selected>1×</option><option value="1500">2×</option><option value="750">4×</option></select></div>
+        <div class="date"><input id="date" type="date" aria-label="선택 날짜"><span id="dayinfo"></span></div>
+        <span class="timeline-hint">그래프와 슬라이더로 날짜 탐색<span>차량 속도 동일 · 긴 경로 도착 후 다음 날짜</span></span>
+      </div>
+      <div class="slider"><canvas id="activity" aria-label="날짜별 이동 건수 그래프"></canvas><input id="slider" type="range" min="0" value="0" aria-label="날짜 타임라인"><div class="range-labels"><span id="start"></span><span>날짜별 이동량</span><span id="end"></span></div></div>
+    </section>
+    <details class="comparison" id="comparison"><summary><span>알고리즘 성능 비교 <small>MILP · Greedy · SA · Tabu</small></span><span class="summary-hint">비용 · 속도 · 수렴 이력</span></summary><div class="comparison-content"><p id="benchmarkContext">현재 MILP 기준선은 종료 상태·실행 시간이 기록되지 않은 과거 해입니다. 최적해 기준선이 아닙니다. 메타휴리스틱의 수렴 이력과 저장해의 비용을 구분해서 보세요.</p><div id="slots" class="slots"></div><div class="convergence-wrap" id="convergenceWrap"><div class="convergence-heading"><b>탐색에 따른 최선 비용</b><span id="convergenceLegend"></span></div><canvas id="convergence" aria-label="메타휴리스틱 탐색 시간별 최선 비용 그래프"></canvas><p id="convergenceStatus"></p></div><div class="compare-scroll"><table><thead><tr><th>알고리즘</th><th>전체 비용</th><th>MILP 저장해 대비²</th><th>풀이 시간¹</th><th>초기해 개선</th><th>반복 수</th><th>배정 블록</th><th>보관 블록³</th><th>점유면적³</th><th>최대 점유율³</th><th>이동 / 입고 / 출고 / 직행³</th></tr></thead><tbody id="comparisonBody"></tbody></table></div><p class="compare-note">¹ 준비·결과 저장을 제외한 풀이 시간. 메타휴리스틱은 그리디 + 탐색, MILP는 모델 구성 + Solve입니다. 기록이 없는 과거 실행은 — 표시.<br>² 동일 입력·설정과 결과 파일 검증 시에만 표시하며 음수는 MILP 저장 결과보다 낮은 비용입니다. 최적성 증명은 아닙니다.<br>³ 선택 날짜 기준. 다른 지표는 실행 전체 기준. 총 시간에는 공통 전처리·독립 검증을 더하며 JSON 저장은 제외합니다.</p><div id="slotStatus" role="status"></div></div></details>
+    <footer class="notes"><p><b>지도 읽는 법</b> 면적이 같은 직사각형으로 시설을 표시합니다. 원본 GPS의 상대 위치를 기준으로 경계를 분리한 도식 지도이며, 모든 시설 사이에 최소 24m 간격을 두었습니다. <a href="assets/layout.json" download="yard-layout.json">보정 좌표 데이터</a></p><p>블록 크기는 실제 길이 × 폭입니다. 내부 배치는 시각화용이며 통로·적층·배치 가능성을 검증하지 않습니다. 점유율에는 도형으로 배치하지 못한 블록도 포함합니다. 이동은 원본 도로의 최단시간 경로이며 하루 안의 순서·출발 시각·애니메이션 속도는 연출입니다.</p></footer>
+    <div id="error" role="alert"></div>
+  </main>
+  <script src="app.js"></script>
+  <script src="runner.js"></script>
+</body>
+</html>
